@@ -1,0 +1,17 @@
+{
+  "name": "dispatch",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Trifoldi Solutions' studio dashboard: gives each project in the folder a port by category (Fire, Breeze, Cold), runs and stops them, and keeps their files, tasks, journal and git history in view.",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
