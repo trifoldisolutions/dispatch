@@ -1,7 +1,7 @@
 ' dispatch.vbs
-' Opens the projects root (the folder holding every project, Dispatch and
-' project-ports.json) in VS Code, then opens the Dispatch dashboard in
-' the default browser. If nothing is answering on port 3000 yet, the server is
+' Opens the projects root (the folder holding every project, Dispatch
+' included) in VS Code, then opens the Dispatch dashboard in the default
+' browser. If nothing is answering on port 3000 yet, the server is
 ' started first with "npm run dev" in a hidden window, and the browser opens
 ' once it responds.
 

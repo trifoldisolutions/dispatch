@@ -1,3 +1,4 @@
+require("dotenv").config({ override: true, quiet: true });
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
@@ -5,14 +6,17 @@ const net = require("net");
 const crypto = require("crypto");
 const { spawn, exec } = require("child_process");
 const { promisify } = require("util");
+const { connectDatabase } = require("./db");
+const Project = require("./models/Project");
+const Membership = require("./models/Membership");
 const execAsync = promisify(exec);
 
 const PORT = 3000;
 const PROJECTS_ROOT = path.join(__dirname, "..");
-const REGISTRY_PATH = path.join(PROJECTS_ROOT, "project-ports.json");
+const SELF_PROJECT = path.basename(__dirname); // Dispatch's own project: in the database, never in the registry
 const CATEGORIES = ["fire", "breeze", "cold"];
 const CATEGORY_LIMITS = { fire: 2, breeze: 4 }; // cold is unlimited
-const PROJECT_DESCRIPTION_MAX_LENGTH = 230; // mirrors the create form's description maxlength in public/index.html
+const PROJECT_DESCRIPTION_MAX_LENGTH = 230; // mirrors the create form's description maxlength in views/index.ejs
 const BASE_PORT = 3001;
 const SAMPLE_PROJECT_DIR = path.join(PROJECTS_ROOT, "new_project_sample");
 const SAMPLE_TEMPLATE_FILES = ["AGENTS.md", "init_prompt.md"];
@@ -59,35 +63,77 @@ function isPortServing(port) {
 }
 
 const app = express();
+app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "views"));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+
+app.get("/", (req, res) => {
+  res.render("index");
+});
 
 // Each project has its own page at /<name>. It's the same page as the
-// dashboard — index.html reads the path and renders that project — so a
+// dashboard — index.ejs reads the path and renders that project — so a
 // refresh, bookmark or new tab on a project's address lands back on it. Only
 // real project folders get one; anything else (favicon.ico, a typo) falls
 // through to a plain 404.
 app.get("/:name", (req, res, next) => {
   if (!listProjectFolders().includes(req.params.name)) return next();
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.render("index");
 });
 
 // Each of a project page's panels also has a page of its own at
-// /<name>/<section> (PROJECT_SECTIONS in index.html), served the same way,
+// /<name>/<section> (PROJECT_SECTIONS in index.ejs), served the same way,
 // and so does the header's Staff (STAFF_SECTION there).
 const PROJECT_SECTIONS = ["explore", "tasks", "history", "journal", "staff"];
 
 app.get("/:name/:section", (req, res, next) => {
   if (!PROJECT_SECTIONS.includes(req.params.section) || !listProjectFolders().includes(req.params.name)) return next();
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.render("index");
 });
 
-function readRegistry() {
-  return JSON.parse(fs.readFileSync(REGISTRY_PATH, "utf8"));
+// The registry is stored as the projects collection (see models/Project.js)
+// and handed to the dashboard in the shape it has always used: each category
+// maps ports to { name, description, url? }, and unassigned is a list.
+async function readRegistry() {
+  const registry = { fire: {}, breeze: {}, cold: {}, unassigned: [] };
+  const projects = await Project.find({ name: { $ne: SELF_PROJECT } }).sort({ port: 1, position: 1 }).lean();
+  for (const project of projects) {
+    const entry = { name: project.name, description: project.description };
+    if (project.url) entry.url = project.url;
+    if (project.port !== null && CATEGORIES.includes(project.category)) registry[project.category][project.port] = entry;
+    else registry.unassigned.push(entry);
+  }
+  return registry;
 }
 
-function writeRegistry(data) {
-  fs.writeFileSync(REGISTRY_PATH, JSON.stringify(data, null, 4) + "\n");
+// Saves a whole (already validated) registry: every entry's place is set from
+// it, and a project that's no longer in it was deleted from the dashboard, so
+// its record and memberships go too.
+async function writeRegistry(data) {
+  const placeProject = (entry, placement) => ({
+    updateOne: {
+      filter: { name: entry.name },
+      update: { $set: { description: entry.description, url: entry.url || "", ...placement } },
+      upsert: true,
+    },
+  });
+  const ops = [];
+  for (const category of CATEGORIES) {
+    for (const [port, entry] of Object.entries(data[category] || {})) {
+      ops.push(placeProject(entry, { category, port: Number(port), position: null }));
+    }
+  }
+  (data.unassigned || []).forEach((entry, position) => {
+    ops.push(placeProject(entry, { category: null, port: null, position }));
+  });
+  if (ops.length) await Project.bulkWrite(ops);
+
+  const kept = [...collectNames(data), SELF_PROJECT];
+  const removed = (await Project.find({ name: { $nin: kept } }, "_id").lean()).map((p) => p._id);
+  if (removed.length) {
+    await Membership.deleteMany({ project: { $in: removed } });
+    await Project.deleteMany({ _id: { $in: removed } });
+  }
 }
 
 // Real, on-disk project folders — a name can only be newly added to the
@@ -125,7 +171,8 @@ function isValidSiteUrl(url) {
   }
 }
 
-function validateRegistry(data) {
+// `existingNames` are the names the registry tracks before this change.
+function validateRegistry(data, existingNames) {
   if (typeof data !== "object" || data === null || Array.isArray(data)) {
     return "registry must be an object";
   }
@@ -216,12 +263,6 @@ function validateRegistry(data) {
   // Only names that are newly appearing (not already tracked) have to match
   // a real folder — this doesn't retroactively break already-tracked names
   // whose folder was since renamed or removed.
-  let existingNames;
-  try {
-    existingNames = collectNames(readRegistry());
-  } catch {
-    existingNames = new Set();
-  }
   const newNames = [...collectNames(data)].filter((name) => !existingNames.has(name));
   if (newNames.length > 0) {
     const folders = new Set(listProjectFolders());
@@ -235,9 +276,9 @@ function validateRegistry(data) {
   return null;
 }
 
-app.get("/api/registry", (req, res) => {
+app.get("/api/registry", async (req, res) => {
   try {
-    res.json(readRegistry());
+    res.json(await readRegistry());
   } catch (err) {
     res.status(500).json({ error: `failed to read registry: ${err.message}` });
   }
@@ -758,7 +799,7 @@ function findJournalPath(projectDir) {
   return path.join(projectDir, JOURNAL_DEFAULT_RELATIVE);
 }
 
-const JOURNAL_NOTE_MAX_LENGTH = 150; // mirrors the composer textarea's maxlength in public/index.html
+const JOURNAL_NOTE_MAX_LENGTH = 150; // mirrors the composer textarea's maxlength in views/index.ejs
 const JOURNAL_DAY_HEADING_RE = /^## (\d{4}-\d{2}-\d{2})\b.*$/gm;
 const JOURNAL_ENTRY_TIME_RE = /^-\s+\*\*(\d{2}:\d{2})\*\*\s+—\s+(.*)$/;
 // The files an entry's work created, modified or deleted, reported by the
@@ -996,7 +1037,7 @@ app.post("/api/project-folders/:name/journal", (req, res) => {
 // here independently of which tasks currently use them, so one can exist
 // with zero tasks tagged with it).
 const TASKS_RELATIVE = path.join("dev_resources", "tasks.json");
-const TASK_TITLE_MAX_LENGTH = 80; // mirrors the composer's title input maxlength in public/index.html
+const TASK_TITLE_MAX_LENGTH = 80; // mirrors the composer's title input maxlength in views/index.ejs
 const TASK_DESCRIPTION_MAX_LENGTH = 500; // mirrors the composer's description textarea maxlength
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/; // matches <input type="date">'s value format
 const TAG_MAX_LENGTH = 30;
@@ -1277,20 +1318,20 @@ app.delete("/api/project-folders/:name", (req, res) => {
   }
 });
 
-app.put("/api/registry", (req, res) => {
+app.put("/api/registry", async (req, res) => {
   let existingNames;
   try {
-    existingNames = collectNames(readRegistry());
-  } catch {
-    existingNames = new Set();
+    existingNames = collectNames(await readRegistry());
+  } catch (err) {
+    return res.status(500).json({ error: `failed to read registry: ${err.message}` });
   }
 
-  const error = validateRegistry(req.body);
+  const error = validateRegistry(req.body, existingNames);
   if (error) {
     return res.status(400).json({ error });
   }
   try {
-    writeRegistry(req.body);
+    await writeRegistry(req.body);
     // Any name that's newly tracked (not just newly assigned a port —
     // moving from unassigned to a category doesn't count) gets the starter
     // files it might be missing, whether its folder was just created or
@@ -1309,14 +1350,9 @@ app.put("/api/registry", (req, res) => {
 
 // Finds which category/port a project name is currently assigned to (not
 // "unassigned" — those have no port to serve on).
-function findAssignedEntry(name) {
-  const registry = readRegistry();
-  for (const category of CATEGORIES) {
-    for (const [port, entry] of Object.entries(registry[category] || {})) {
-      if (entry.name === name) return { category, port };
-    }
-  }
-  return null;
+async function findAssignedEntry(name) {
+  const project = await Project.findOne({ name, port: { $ne: null } }).lean();
+  return project ? { category: project.category, port: String(project.port) } : null;
 }
 
 // Mirrors scripts/inject-port.js so a manual port reassignment in the
@@ -1431,7 +1467,12 @@ function attachExitWatcher(proc, name, kind, state) {
 
 app.post("/api/projects/:name/start", async (req, res) => {
   const name = req.params.name;
-  const assigned = findAssignedEntry(name);
+  let assigned;
+  try {
+    assigned = await findAssignedEntry(name);
+  } catch (err) {
+    return res.status(500).json({ error: `failed to read registry: ${err.message}` });
+  }
   if (!assigned) {
     return res.status(400).json({ error: `"${name}" is not assigned to a port` });
   }
@@ -1529,7 +1570,12 @@ app.post("/api/projects/:name/stop", async (req, res) => {
 
   // Not something we started — if the assigned port is still actually live,
   // fall back to killing whatever OS process is bound to it directly.
-  const assigned = findAssignedEntry(name);
+  let assigned;
+  try {
+    assigned = await findAssignedEntry(name);
+  } catch (err) {
+    return res.status(500).json({ error: `failed to read registry: ${err.message}` });
+  }
   const pids = assigned ? await findPidsListeningOnPort(assigned.port) : [];
   if (pids.length === 0) {
     return res.json({ ok: true });
@@ -1636,3 +1682,10 @@ app.post("/api/open-projects-root", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Dispatch running on http://localhost:${PORT}`);
 });
+
+// The registry lives in the database, so without it the dashboard can't list
+// projects; the rest (files, git, journal, tasks) still works, so the failure
+// is logged rather than stopping the server.
+connectDatabase()
+  .then(() => console.log("MongoDB connected"))
+  .catch((err) => console.error(`MongoDB connection failed: ${err.message}`));
