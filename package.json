@@ -7,16 +7,36 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "build": "tailwindcss -i ./src/input.css -o ./public/output.css --minify",
+    "tw": "tailwindcss -i ./src/input.css -o ./public/output.css --watch",
+    "predev": "npm run build",
+    "prestart": "npm run build"
   },
   "dependencies": {
+    "@preact/signals": "^2.11.4",
     "argon2": "^0.45.1",
+    "connect-mongo": "^6.0.0",
     "dotenv": "^18.0.9",
     "ejs": "^7.0.2",
     "express": "^4.19.2",
-    "mongoose": "^9.11.4"
+    "express-session": "^1.19.0",
+    "helmet": "^8.3.0",
+    "htm": "^3.1.1",
+    "mongoose": "^9.11.4",
+    "preact": "^11.1.0",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.4"
+    "@tailwindcss/cli": "^4.3.3",
+    "nodemon": "^3.1.4",
+    "tailwindcss": "^4.3.3"
+  },
+  "nodemonConfig": {
+    "ignore": [
+      "public/**",
+      "src/**",
+      "dev_resources/**"
+    ]
   }
 }

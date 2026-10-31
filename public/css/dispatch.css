@@ -1,0 +1,2187 @@
+/* The project page's width breakpoints below are container queries on
+   .app-content, the page's own column: beside it sit the left menu (#rail
+   in views/index.ejs, 72px from 640px up), the project list (from 1280px)
+   and the Add project form (from 2072px), so the window's width alone
+   doesn't say how much room the page has. */
+:root {
+  color-scheme: light dark;
+  --bg: #f5f5f4;
+  --panel: #ffffff;
+  --border: #e2e0dc;
+  --text: #1c1917;
+  --text-dim: #78716c;
+  --accent: #2563eb;
+  --danger: #dc2626;
+  --ok: #16a34a;
+  --fire-bg: #fef2f2;
+  --fire-border: #fecaca;
+  --breeze-bg: #fffbeb;
+  --breeze-border: #fde68a;
+  --cold-bg: #eff6ff;
+  --cold-border: #bfdbfe;
+  --toolbar-height: 60px; /* the project page fills the window below it */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #18181b;
+    --panel: #232326;
+    --border: #38383c;
+    --text: #f4f4f5;
+    --text-dim: #a1a1aa;
+    --danger: #f87171;
+    --fire-bg: #2a1414;
+    --fire-border: #5c2323;
+    --breeze-bg: #2a2410;
+    --breeze-border: #5c4d1e;
+    --cold-bg: #10202a;
+    --cold-border: #1e4258;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+#status {
+  position: fixed;
+  top: 16px;
+  right: 24px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  white-space: nowrap;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  transform: translateY(-10px) scale(0.96);
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+#status.show { opacity: 1; transform: translateY(0) scale(1); }
+#status.saving { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+#status.error { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+#status.saved { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
+.toast-icon { display: flex; align-items: center; flex: none; }
+.toast-icon svg { display: block; }
+.toast-close {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  opacity: 0.55;
+  padding: 0;
+  margin: 0 -4px 0 2px;
+  cursor: pointer;
+}
+.toast-close:hover { opacity: 1; }
+.toast-close svg { display: block; }
+/* The row over a project's header box: 60px with its 38px buttons, level
+   with the project list's search box beside it. Taller only when it has to
+   wrap. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  min-height: var(--toolbar-height);
+  padding: 10px 32px;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+/* Its links (each with its own margin) sit straight in the toolbar's row,
+   so with both hidden the project's line starts at the page's edge. */
+.toolbar-left { display: contents; }
+/* A section page's way back: the arrow alone, the project's name being
+   right after it. */
+#back-link { padding: 4px 6px; }
+#back-link svg { margin-right: 0; }
+/* The project's line (see buildProjectBar): name, port, Switch, Eject and
+   Sync on the left, the actions on the right; under a narrow column the
+   actions wrap onto a line of their own. Unclickable while the header box
+   shows its saving spinner, like the header itself. */
+.project-bar { flex: 1; min-width: 0; }
+.project-bar:empty { display: none; }
+.app-content:has(.project-header.busy) .project-bar { pointer-events: none; }
+.project-bar-content { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.project-bar-main { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.project-bar-content > .project-actions { margin: 0 0 0 auto; align-self: center; }
+.project-bar-content .run-btn { flex: none; min-width: 96px; }
+/* The toolbar's Projects (opens the project list under 1280px) and, on a
+   section's page, the link back to its project. The negative margin lines
+   the icon up with the page content's left edge despite the hover padding
+   around it. The icon sits on the label's baseline, like a panel title's
+   chevron (see .project-panel-title-link svg), its middle level with the
+   lowercase letters; centered in the link it sat on the capitals' height
+   instead, a pixel above the Dispatch link's chevron in the same spot. */
+.toolbar-link {
+  flex: none;
+  display: block;
+  margin: 0 8px 0 -6px;
+  padding: 4px 10px 4px 6px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.toolbar-link:hover { color: var(--accent); background: var(--panel); }
+.toolbar-link svg { display: inline-block; vertical-align: -4px; margin-right: 6px; }
+/* From 1280px the list is a column of its own beside the page. */
+@media (min-width: 1280px) {
+  .project-list-btn { display: none; }
+}
+/* Sync while it reloads (see syncProjectPage): its arrows turn, at full
+   strength rather than faded like a disabled button. */
+.icon-btn.spinning:disabled { opacity: 1; cursor: progress; }
+.icon-btn.spinning svg { animation: refresh-spin 0.6s linear infinite; }
+@keyframes refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+/* Holds #toolbar-right and the account, which stays at the toolbar's far
+   right on project pages too, where #toolbar-right is hidden. */
+.toolbar-end {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: none;
+}
+.account {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+.new-folders-subtitle { margin: -6px 0 0; color: var(--text-dim); font-size: 13px; }
+.new-folders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.new-folders-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  border-radius: 6px;
+}
+.new-folders-row:hover { background: var(--bg); }
+.new-folders-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.new-folders-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.new-folders-row-delete {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-dim);
+  padding: 0;
+  cursor: pointer;
+}
+.new-folders-row-delete:hover { color: var(--danger); background: var(--bg); }
+.new-folders-empty { color: var(--text-dim); font-style: italic; font-size: 13px; padding: 8px 6px; }
+.card-spinner {
+  position: absolute;
+  inset: 0;
+  z-index: 3; /* over the card link and the controls lifted above it */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: var(--accent);
+  background: var(--panel);
+  border-radius: 6px;
+}
+.card-name-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: inherit;
+  text-decoration: none;
+}
+.card-name-text[href] { cursor: pointer; }
+.card-name-text[href]:hover { color: var(--accent); text-decoration: underline; }
+/* The project page's title has room to wrap instead of truncating like the
+   card's does — keep the link coloring/hover but drop the ellipsis clipping. */
+.project-title .card-name-text {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+.live-dot {
+  position: relative;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  opacity: 0.4;
+  transition: background 0.2s ease, opacity 0.2s ease;
+}
+.live-dot.live { background: var(--ok); opacity: 1; }
+.live-dot.live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--ok);
+  animation: live-dot-ripple 1.8s ease-out infinite;
+}
+@keyframes live-dot-ripple {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+/* Read-only port display, shared by cards and the project page header. */
+.card-desc {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: hidden;
+}
+.desc-counter {
+  align-self: flex-end;
+  margin-top: -6px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.desc-counter.over-limit { color: var(--danger); }
+.add-form-card input:disabled { opacity: 0.6; cursor: not-allowed; }
+.card-error {
+  color: var(--danger);
+  font-size: 12px;
+}
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  align-self: flex-start;
+}
+.card-actions.stretch { align-self: stretch; }
+.dropdown {
+  position: relative;
+}
+.dropdown-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-width: 96px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 9px 12px;
+  cursor: pointer;
+  text-transform: capitalize;
+}
+.dropdown-toggle:hover { border-color: var(--accent); }
+.dropdown.open .dropdown-toggle { border-color: var(--accent); }
+.dropdown-caret { color: var(--text-dim); flex: none; transition: transform 0.15s ease; }
+.dropdown.open .dropdown-caret { transform: rotate(180deg); }
+
+.icon-btn {
+  flex: none;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+.icon-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.icon-btn.danger:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
+.icon-btn.danger-fill { background: var(--fire-bg); border-color: var(--fire-border); color: var(--danger); }
+.icon-btn.danger-fill:hover:not(:disabled) { border-color: var(--danger); }
+.icon-btn:disabled { cursor: not-allowed; opacity: 0.4; }
+
+.run-btn {
+  flex: 1;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+.run-btn:hover:not(:disabled) { opacity: 0.9; }
+.run-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+.run-btn.running { background: var(--panel); border-color: var(--danger); color: var(--danger); }
+.run-btn.running.warn { border-color: var(--breeze-border); color: #b45309; }
+.run-btn.crashed { background: var(--panel); border-color: var(--danger); color: var(--danger); }
+.run-btn.starting { background: var(--panel); border-color: var(--border); color: var(--text-dim); }
+.dropdown-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  min-width: 100%;
+  width: max-content;
+  max-width: 220px;
+  z-index: 30;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  padding: 4px;
+}
+/* Applied by positionOpenDropdowns() when the menu would otherwise spill
+   out of the viewport — or out of the popup it was opened from — in that
+   direction. */
+.dropdown-menu.drop-up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+.dropdown-menu.align-right {
+  left: auto;
+  right: 0;
+}
+/* Positioned in JS (positionPortalMenu) instead of via top/left: calc() —
+   it's appended to <body>, not nested under its toggle, so there's no
+   positioned ancestor for a CSS-only placement to be relative to. */
+.dropdown-menu.portal-menu {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
+/* The tags menu's checkbox list. When placeDropdown() has to cap the
+   menu's height to keep it inside the window, this is the part that shrinks
+   and scrolls, so the "New tag…" row below it never scrolls out of reach. */
+.dropdown-scroll { overflow-y: auto; min-height: 0; }
+.dropdown-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-align: left;
+  text-transform: capitalize;
+}
+.dropdown-option:hover:not(:disabled) { background: var(--bg); }
+.dropdown-option.cat-fire:hover:not(:disabled) { background: var(--fire-bg); }
+.dropdown-option.cat-breeze:hover:not(:disabled) { background: var(--breeze-bg); }
+.dropdown-option.cat-cold:hover:not(:disabled) { background: var(--cold-bg); }
+.dropdown-option.active { color: var(--accent); font-weight: 600; }
+.dropdown-option.danger { color: var(--danger); }
+.dropdown-option.danger:hover:not(:disabled) { background: var(--fire-bg); }
+.dropdown-option .check { color: var(--accent); }
+.dropdown-option-content { display: inline-flex; align-items: center; gap: 8px; }
+.dropdown-option-content svg { flex: none; }
+/* Every checkbox, drawn with mynaui icons (see checkboxIcon): an outline
+   when unchecked, filled with the accent color when checked. */
+.checkbox-icon { display: block; flex: none; color: var(--text-dim); }
+.checkbox-icon.checked { color: var(--accent); }
+/* A real checkbox wearing that icon (see decorateCheckbox): the input sits
+   invisibly on top, so it still takes the clicks and keyboard focus. */
+.icon-checkbox { position: relative; flex: none; display: inline-flex; cursor: pointer; }
+.icon-checkbox-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+.icon-checkbox:has(.icon-checkbox-input:disabled) { cursor: not-allowed; }
+.icon-checkbox:has(.icon-checkbox-input:focus-visible) .checkbox-icon {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 5px;
+}
+.dropdown-option .hint {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  white-space: nowrap;
+}
+.dropdown-option:disabled { color: #a8a29e; cursor: not-allowed; }
+.dropdown-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 2px;
+}
+.tags-toggle { min-width: 90px; }
+/* Composer-only: the toggle fills the gap between the date picker and the
+   Add button, matching row 1's text input spanning the full row. */
+.tags-dropdown-grow { flex: 1; min-width: 0; }
+.tags-dropdown-grow .tags-toggle { width: 100%; }
+.dropdown-empty { padding: 8px 12px; font-size: 12px; color: var(--text-dim); font-style: italic; }
+.dropdown-new-tag { display: flex; gap: 6px; padding: 6px 8px; }
+.dropdown-new-tag-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  box-sizing: border-box;
+}
+.dropdown-new-tag-input:focus { outline: none; border-color: var(--accent); }
+.dropdown-new-tag-btn {
+  flex: none;
+  padding: 0 10px;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dropdown-new-tag-btn:hover { filter: brightness(1.08); }
+
+.add-form-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 18px;
+}
+.create-form-heading {
+  font-weight: 600;
+  font-size: 14px;
+}
+.create-form-subtitle {
+  align-self: flex-start;
+  margin-top: -6px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.create-form-subtitle:hover:not(:disabled) { color: var(--accent); text-decoration: underline; }
+.create-form-subtitle:disabled { cursor: default; }
+.add-form-card input {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  width: 100%;
+}
+.add-form-row { display: flex; gap: 8px; }
+/* The Edit form's Finished checkbox (see buildFinishedField), with a quiet
+   word on what it means. */
+.add-form-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
+.add-form-check-hint { margin-left: 4px; font-size: 12px; color: var(--text-dim); }
+.add-form-row .dropdown { flex: 1; min-width: 0; }
+.add-form-row .dropdown-toggle { width: 100%; }
+/* Custom port field (see buildPortStepper): it can't leave the selected
+   category's port range, unlike a native number input. */
+.port-stepper {
+  flex: 0 0 100px;
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.port-stepper[hidden] { display: none; }
+.port-stepper:focus-within { border-color: var(--accent); }
+.add-form-card .port-stepper input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  padding: 8px 4px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.add-form-card .port-stepper input:focus { outline: none; }
+.port-step-btns {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+}
+.port-step {
+  flex: 1;
+  width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.port-step + .port-step { border-top: 1px solid var(--border); }
+.port-step:hover:not(:disabled) { color: var(--accent); }
+.port-step:disabled { opacity: 0.35; cursor: default; }
+.add-form-actions { display: flex; gap: 8px; }
+.add-form-actions > * { flex: 1; }
+.create-btn {
+  padding: 9px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+}
+.create-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--text-dim);
+  border-color: var(--text-dim);
+}
+.cancel-btn {
+  padding: 9px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--panel);
+  color: var(--text);
+}
+.cancel-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.json-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-dim);
+}
+.json-toggle:hover { color: var(--accent); }
+.json-toggle svg { display: block; transition: transform 0.15s ease; }
+/* Tree-view convention (unlike the section collapse chevrons above, which
+   rotate 180°): pointing down = expanded, rotated to point right = collapsed. */
+.json-toggle.collapsed svg { transform: rotate(-90deg); }
+.json-toggle-spacer { flex: none; display: inline-block; width: 18px; }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.modal-overlay[hidden] { display: none; }
+.modal-panel-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+.modal-panel-inner.busy { opacity: 0.6; pointer-events: none; }
+.modal-top-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: -6px;
+}
+.modal-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  word-break: break-word;
+}
+.modal-close {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.modal-close:hover { color: var(--danger); background: var(--bg); }
+
+/* --- Project page (/<name>): the project's own header (who it is +
+   every action) above a dashboard grid of panels — Explorer, Tasks,
+   Journal and History. The project list beside it leads to the others. */
+.project-view[hidden],
+.toolbar-link[hidden] { display: none; }
+/* 16px under the panels, the same as above the toolbar's row (its 28px of
+   links and stats centered in its 60px) and between the page's boxes, so
+   the visible space at the top and bottom of the page matches. */
+.project-view {
+  min-height: calc(100vh - var(--toolbar-height));
+  padding: 0 32px 16px;
+  max-width: 1800px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.project-message {
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-dim);
+}
+.project-message a { color: var(--accent); }
+/* No project to show (see buildPageEmpty): a panel's empty state, a size
+   up, centered in a dashed box that runs down to the window's foot like the
+   page it stands in for. Also /projects with no project to open
+   (public/js/app/projects.js), which has no toolbar, so it starts its own
+   column that far down. */
+.page-empty {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 360px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+.page-empty .panel-empty { padding: 48px 24px; }
+.page-empty .panel-empty-icon { width: 56px; height: 56px; margin-bottom: 12px; }
+.page-empty .panel-empty-icon svg { width: 26px; height: 26px; }
+.page-empty .panel-empty-title { font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
+.page-empty .panel-empty-text { max-width: 400px; margin-top: 2px; }
+.page-empty .panel-empty-action { margin-top: 16px; }
+.projects-empty {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  max-width: 1800px;
+  margin: 0 auto;
+  padding: var(--toolbar-height) 32px 16px;
+}
+@container content (max-width: 900px) {
+  .projects-empty { padding-inline: 16px; }
+}
+.project-header {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+}
+.project-header.busy { pointer-events: none; }
+/* Three parts: who the project is on the left, its activity (changes and
+   tasks, see buildProjectActivity) in the middle, its staff over its
+   actions on the right.
+   The middle is as wide as its year of changes when there's room and gives
+   way first when there isn't, its oldest weeks scrolling out of view. In a
+   column under 1400px the activity drops under the other two; on a phone
+   everything stacks. */
+.project-header-top {
+  display: grid;
+  grid-template-columns: minmax(340px, 1fr) minmax(0, max-content) max-content;
+  grid-template-areas: "identity activity actions";
+  align-items: start;
+  gap: 20px 56px;
+}
+@container content (max-width: 1399px) {
+  .project-header-top {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    grid-template-areas: "identity actions" "activity activity";
+  }
+}
+@container content (max-width: 760px) {
+  .project-header-top {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "identity" "actions" "activity";
+  }
+}
+/* Each part runs the header's full height and ends at its foot: the
+   identity's created/edited line, the activity's tasks bar and the side's
+   actions all share one bottom line, whichever part is tallest. */
+.project-identity { grid-area: identity; align-self: stretch; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+/* In the project's line over the header box (see buildProjectTitleRow).
+   Wraps so that in a narrow column the port drops under the name rather
+   than squeezing it into breaking mid-word. */
+.project-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.project-title-row .live-dot { flex: none; }
+.project-title {
+  min-width: 0;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.25;
+  word-break: break-word;
+}
+/* One line of chips, each keeping its text whole, except that when they
+   don't all fit the folder chip gives way, its path cut short with an
+   ellipsis (it's in full in the tooltip). On a phone they wrap instead,
+   since the folder would have next to no room left. */
+.project-meta { display: flex; gap: 6px; min-width: 0; }
+.project-meta > * { flex: none; white-space: nowrap; }
+.project-meta > .project-folder-link { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@container content (max-width: 760px) {
+  .project-meta { flex-wrap: wrap; }
+}
+/* A finished project's chip (see buildProjectHeader): its check in the
+   "running" green, the rest quiet. */
+.project-badge.finished { color: var(--text-dim); text-transform: none; }
+.project-badge.finished svg { width: 13px; height: 13px; color: var(--ok); }
+.project-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+  color: var(--text-dim);
+}
+.project-badge.cat-fire { background: var(--fire-bg); border-color: var(--fire-border); color: var(--text); }
+.project-badge.cat-breeze { background: var(--breeze-bg); border-color: var(--breeze-border); color: var(--text); }
+.project-badge.cat-cold { background: var(--cold-bg); border-color: var(--cold-border); color: var(--text); }
+/* Four lines at most, so the header keeps its height whatever the column's
+   width; when that cuts it short, the rest is in the tooltip. */
+.project-description {
+  margin: 0;
+  max-width: 110ch;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+.project-description.empty { color: var(--text-dim); font-style: italic; }
+.project-path-link {
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: left;
+  word-break: break-all;
+  cursor: pointer;
+}
+.project-path-link:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.project-path-link:disabled { cursor: default; opacity: 0.7; }
+/* The localhost and live site chips are links, not buttons like the folder
+   chip they're styled after. */
+.project-site-link { display: inline-flex; align-items: center; text-decoration: none; }
+/* At the identity's foot, its text's baseline — not the bottom of its
+   line, 4px lower — on the line where the tasks bar and the buttons end. */
+.project-path-meta {
+  margin-top: auto;
+  margin-bottom: -4px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+.project-path-sep { color: var(--text-dim); }
+.project-path-label { color: var(--text-dim); }
+.project-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.project-callout.danger { background: var(--fire-bg); border: 1px solid var(--fire-border); color: var(--danger); }
+.project-callout.warn { background: var(--breeze-bg); border: 1px solid var(--breeze-border); color: #b45309; }
+/* The name and its port as text after it, on one baseline, then Switch
+   and Eject as buttons like the header's other actions — the two things
+   you can do with that port. */
+.project-name-group { min-width: 0; display: flex; align-items: baseline; gap: 14px; }
+.project-port-number { flex: none; font-size: 18px; font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+/* Switch, Eject and Sync, after the port (see buildProjectBarTools). */
+.project-bar-tools { flex: none; display: flex; gap: 4px; }
+.project-bar-tools .port-switch { display: flex; }
+.port-switch.open .project-switch-btn { color: var(--accent); border-color: var(--accent); }
+/* Switch's menu: a heading per category over its ports, each with who has
+   it (or Free) and "Swap" for a taken one. Scrolls once the unlimited
+   category's ports run long. */
+.port-switch-menu { width: 300px; max-width: none; max-height: 380px; overflow-y: auto; }
+/* A category's range sits right after its name: the right-hand column is
+   only ever an action (Swap, Insert), so nothing else there looks like one. */
+.port-switch-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.port-switch-heading:not(:first-child) { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+.port-switch-cat { text-transform: capitalize; }
+.port-switch-range { font-weight: 400; font-variant-numeric: tabular-nums; opacity: 0.75; }
+.port-switch-option { justify-content: flex-start; padding: 6px 10px; font-size: 14px; text-transform: none; }
+.port-switch-option.active:disabled { color: var(--accent); cursor: default; }
+.port-switch-port { flex: none; width: 4ch; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.port-switch-option.active .port-switch-port { color: inherit; }
+.port-switch-holder { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.port-switch-holder.free { color: var(--ok); }
+.port-switch-holder.end { color: var(--text-dim); font-style: italic; } /* a placeholder, like an empty field's */
+.port-switch-hint { flex: none; color: var(--text-dim); }
+.port-switch-option:hover:not(:disabled) .port-switch-hint { color: var(--accent); }
+/* The right-hand part: the staff, its cards down at the header's foot.
+   Three header cards wide (.staff-row .staff-card's 96px and the row's 8px gaps), more
+   scrolling sideways (contain: a long row of people can't widen the
+   column). On a phone it spans the header. */
+.project-side {
+  grid-area: actions;
+  justify-self: end;
+  align-self: stretch;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* the staff row's own gap, between its cards and the client's */
+}
+@container content (max-width: 760px) {
+  .project-side { justify-self: stretch; }
+}
+.project-actions { flex-wrap: wrap; }
+/* Its cards come right under its title and take any height the column has
+   to spare (when the year of changes beside it is taller, as on a project
+   with no client), their avatar and name centered in it, so they still end
+   on the header's bottom line. */
+.project-staff { flex: 1 1 auto; contain: inline-size; }
+.project-staff > .staff-row { flex: 1 1 auto; }
+.staff-row .staff-card { width: 96px; justify-content: center; } /* narrower than tall; the Staff page's stay 120px */
+/* With no one on the project, its empty state (see buildProjectStaff) is
+   boxed in a dashed line, the way the dashboard marks a free port, and
+   fills the column down to the header's foot. */
+.project-staff > .panel-empty { padding: 16px; border: 1px dashed var(--border); border-radius: 8px; }
+@container content (min-width: 761px) {
+  .project-side { width: calc(3 * 96px + 2 * 8px); }
+}
+/* Every card on one row: the project lead first, then everybody else.
+   More than fit scroll sideways, with no scrollbar showing (see
+   buildProjectStaff for the mouse wheel). */
+.staff-row { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.staff-row::-webkit-scrollbar { display: none; }
+/* The Staff page's: all the cards, wrapped. Its rows keep to the top
+   instead of stretching down the panel; within one, the cards still match
+   the tallest. */
+.staff-grid { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; }
+/* A circular avatar over the person's name and role, centered across,
+   with a ⋮ menu in the top right corner (see buildStaffMenu). 120px wide
+   and as tall as that stack needs; the row stretches every card to the
+   tallest. The avatar is a plain gray circle for now. */
+.staff-card {
+  position: relative;
+  flex: none;
+  width: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.staff-avatar {
+  --avatar-size: 72px;
+  position: relative;
+  flex: none;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: 50%;
+  background: var(--border);
+}
+/* Their picture, when they have one (see buildAvatar). */
+.staff-avatar img { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+/* Logged in: a green dot on the avatar's lower right edge, a quarter of
+   its width, ringed in the card's background so it reads as cut out of the
+   avatar. Its center sits on the circle, at 45°: (1 - cos 45°) / 2 of the
+   avatar in from each side of the corner. */
+.staff-presence {
+  --presence-size: calc(var(--avatar-size) / 4);
+  position: absolute;
+  right: calc(var(--avatar-size) * 0.1464 - var(--presence-size) / 2);
+  bottom: calc(var(--avatar-size) * 0.1464 - var(--presence-size) / 2);
+  width: var(--presence-size);
+  height: var(--presence-size);
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--ok);
+}
+/* Under the staff, the project's clients (see buildProjectClients): each
+   boxed like a staff card, its avatar then its name over how many projects
+   they have with the studio, only as wide as that. Side by side on one row
+   that scrolls sideways with no scrollbar, like the staff's. The last thing
+   in the column, so its bottom is on the header's bottom line. */
+.project-clients {
+  display: flex;
+  gap: 8px;
+  min-height: calc(40px + 2 * 10px + 2px); /* a client box's: avatar, padding, border */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.project-clients::-webkit-scrollbar { display: none; }
+.client-row {
+  flex: none;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 10px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+/* The header's staff cards and the client row share a 40px avatar (the
+   Staff page keeps its 72px), so the column stays about as tall as the
+   year of changes beside it rather than pushing its tasks bar down. */
+.staff-row .staff-avatar,
+.client-row .staff-avatar { --avatar-size: 40px; }
+/* No client (see buildNoClientRow): the box and avatar only outlined. */
+.client-row.empty { border-style: dashed; background: none; }
+.client-row.empty .staff-avatar { background: none; border: 1px dashed var(--border); }
+.client-row.empty .client-name { font-weight: 500; color: var(--text-dim); }
+.client-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.client-name,
+.client-projects { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.client-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.client-projects { font-size: 12px; color: var(--text-dim); }
+.staff-text { width: 100%; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.staff-name,
+.staff-role { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.staff-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.staff-role { font-size: 12px; color: var(--text-dim); }
+/* What sets the lead's card apart from the rest: its role, bolder and
+   tinted blue like a task's tags. */
+.staff-role.lead { font-weight: 600; color: color-mix(in srgb, var(--accent) 75%, var(--text)); }
+/* The ⋮ sits in the corner, clear of the avatar's curve. Hovering it, or
+   its menu being open, only colors the icon, with no box behind it. */
+.staff-menu { position: absolute; top: 4px; right: 4px; }
+.staff-menu-toggle {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.staff-menu-toggle svg { display: block; }
+.staff-menu-toggle:hover,
+.staff-menu.open .staff-menu-toggle { color: var(--accent); }
+/* Remove is red all the time, like the header's Delete, so it stands apart
+   from the other two at a glance, disabled or not. */
+.staff-menu-list .dropdown-option.danger:disabled { color: var(--danger); }
+
+/* The header's middle part: a GitHub-style grid of the last year's
+   changes (one journal entry is one change), then a bar of the project's
+   done tasks against its open ones. Both shade with the accent: the more
+   changes a day had, the darker its blue. */
+.project-activity {
+  --activity-cell: 10px;
+  --activity-gap: 3px;
+  --activity-empty: color-mix(in srgb, var(--border) 75%, var(--panel));
+  --activity-1: color-mix(in srgb, var(--accent) 35%, var(--panel));
+  --activity-2: color-mix(in srgb, var(--accent) 55%, var(--panel));
+  --activity-3: color-mix(in srgb, var(--accent) 78%, var(--panel));
+  --activity-4: var(--accent);
+  --task-open: color-mix(in srgb, var(--accent) 35%, var(--panel));
+  grid-area: activity;
+  justify-self: start; /* as wide as its year of changes, so the tasks bar under it ends where it does */
+  align-self: stretch;
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+/* Mixed into the dark panel, the accent's faintest step sank to nearly the
+   empty cells' gray. Dark mode steps through blues instead, lightest for the
+   quietest days down to darkest for the busiest, as in light mode — all of
+   them plainly blue against the gray. The two middle ones sit a third and two
+   thirds of the way between the ends in OKLab, so each step is as much
+   darker than the last (lightness 0.71, 0.64, 0.56, 0.49). */
+@media (prefers-color-scheme: dark) {
+  .project-activity {
+    --activity-1: rgb(96 165 250 / 0.45); /* #60a5fa */
+    --activity-2: rgb(71 137 239 / 0.65); /* #4789ef */
+    --activity-3: rgb(48 109 228 / 0.85); /* #306de4 */
+    --activity-4: #1d4ed8;
+  }
+}
+.activity-section { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.project-activity > .activity-section + .activity-section { margin-top: auto; } /* Tasks, down at the header's foot */
+.activity-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.activity-head-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.activity-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.activity-legend { display: flex; align-items: center; gap: 4px 12px; flex-wrap: wrap; }
+.activity-legend-scale { display: flex; align-items: center; gap: 3px; }
+.activity-legend-scale > span:first-child { margin-right: 3px; }
+.activity-legend-scale > span:last-child { margin-left: 3px; }
+.activity-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.activity-swatch { flex: none; width: var(--activity-cell); height: var(--activity-cell); border-radius: 2px; }
+.activity-level-0 { background: var(--activity-empty); }
+.activity-level-1 { background: var(--activity-1); }
+.activity-level-2 { background: var(--activity-2); }
+.activity-level-3 { background: var(--activity-3); }
+.activity-level-4 { background: var(--activity-4); }
+/* Weekday labels stay put beside the weeks, which scroll sideways when
+   there isn't room for all of them. The scroller runs right-to-left so it
+   starts at its end: the newest weeks show, the oldest are the ones cut. */
+.activity-graph { display: flex; gap: 6px; min-width: 0; }
+.activity-weekdays,
+.activity-grid {
+  display: grid;
+  grid-template-rows: 15px repeat(7, var(--activity-cell));
+  gap: var(--activity-gap);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-dim);
+}
+.activity-weekdays > span { display: flex; align-items: center; }
+.activity-scroll { min-width: 0; overflow-x: auto; direction: rtl; scrollbar-width: none; }
+.activity-scroll::-webkit-scrollbar { display: none; }
+/* A column per week placed (see buildChangesGraph); as wide as those
+   columns, so it's the grid itself, not just its weeks, that overflows. */
+.activity-grid { width: max-content; direction: ltr; grid-auto-columns: var(--activity-cell); }
+.activity-month { grid-row: 1; white-space: nowrap; align-self: start; }
+.activity-cell { border-radius: 2px; }
+.activity-cell:hover { outline: 1px solid var(--text-dim); outline-offset: 0; }
+.activity-tooltip {
+  position: absolute;
+  z-index: 5;
+  transform: translate(-50%, -100%);
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.activity-tooltip strong { font-weight: 600; }
+.task-progress-bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.task-progress-bar.empty { background: var(--activity-empty); }
+.task-progress-done { background: var(--accent); }
+.task-progress-open { background: var(--task-open); } /* the bar's track, kept dim beside the done part */
+.task-progress-figure { font-weight: 600; color: var(--text); }
+.project-actions .run-btn { flex: none; min-width: 100px; }
+.project-actions .dropdown-toggle { height: 38px; }
+.project-edit { max-width: 560px; }
+
+/* Every panel has a fixed height and scrolls its one long list
+   (.panel-scroll) inside itself, so the grid keeps its shape no matter how
+   many files are expanded or tasks are listed. History always sits right
+   under Explorer. Two columns by default, three on a wide screen (Explorer
+   and History sharing the first column, Tasks and Journal each running
+   the full height), one on a narrow one. On a wide screen the grid takes
+   whatever height the header leaves, so the page fits the window (it
+   scrolls only once that's under 480px). */
+.project-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: max(480px, calc(100vh - 300px)) 420px;
+  grid-template-areas:
+    "explorer tasks"
+    "history journal";
+}
+@container content (min-width: 1200px) {
+  .project-grid {
+    flex: 1 1 0px;
+    min-height: 480px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "explorer tasks journal"
+      "history tasks journal";
+  }
+}
+/* A panel's own page (/<name>/<section>): that one panel, filling the
+   window below the header like the grid it came from, and the full width
+   of the page. */
+.project-section-page {
+  flex: 1 1 0px;
+  min-height: 480px;
+  display: flex;
+  flex-direction: column;
+}
+.project-section-page > .project-panel { flex: 1; }
+.project-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.project-panel-explorer { grid-area: explorer; }
+.project-panel-tasks { grid-area: tasks; }
+.project-panel-journal { grid-area: journal; }
+.project-panel-history { grid-area: history; }
+.project-panel-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.project-panel-title { flex: none; margin: 0; font-size: 13px; font-weight: 700; }
+/* On the project page the title (label + chevron) links to the panel's
+   own page; the chevron steps forward on hover. The chevron sits on the
+   label's baseline, lowered by the 4px of empty space below it inside its
+   16px icon: its bottom then rests on the baseline and its middle is 4px
+   above it, level with the body of the mostly lowercase words, where a
+   "›" would sit. Tied to the baseline in whole pixels, it lands on the
+   same row in every panel, which centering (fractional, against snapped
+   text) didn't. */
+.project-panel-title-link {
+  display: inline-block;
+  margin: -2px -6px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  color: inherit;
+  text-decoration: none;
+}
+.project-panel-title-link svg {
+  display: inline-block;
+  vertical-align: -4px;
+  margin-left: 2px;
+  color: var(--text-dim);
+  transition: transform 0.15s ease;
+}
+.project-panel-title-link:hover,
+.project-panel-title-link:hover svg { color: var(--accent); }
+.project-panel-title-link:hover svg { transform: translateX(2px); }
+.project-panel-title-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.project-panel-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+/* The Tasks header's figures, each a checkbox button filtering the list
+   (see buildTaskStatusFilter). The negative margin keeps the header as
+   tall as the other panels' plain-text ones; the row gap makes up for it
+   if they ever wrap. */
+.task-status-filter { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px 6px; min-width: 0; }
+.task-status-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: -4px 0;
+  padding: 2px 9px 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.task-status-btn .checkbox-icon { width: 15px; height: 15px; }
+.task-status-btn:not(.disabled):hover { border-color: var(--accent); }
+.task-status-btn.active {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+}
+/* No tasks with that status, so nothing for it to show or hide. */
+.task-status-btn.disabled { opacity: 0.45; cursor: not-allowed; }
+/* Focus rings the whole button rather than just its checkbox icon. */
+.task-status-btn:has(.icon-checkbox-input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+.task-status-btn .icon-checkbox:has(.icon-checkbox-input:focus-visible) .checkbox-icon { outline: none; }
+.project-panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px 16px;
+  font-size: 13px;
+}
+/* The panel's content fills its body, and inside that, the one scrolling
+   list takes up whatever room the filter bar/composer around it leave. */
+.project-panel-body > * { flex: 1; min-height: 0; }
+.panel-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+/* Panel lists still scroll by wheel, touch or keyboard; the bar is hidden. */
+.panel-scroll, .history-tab { scrollbar-width: none; }
+.panel-scroll::-webkit-scrollbar, .history-tab::-webkit-scrollbar { display: none; }
+.project-panel > .card-error { padding: 0 16px 14px; }
+/* What a panel shows where its list would be when there's nothing to list
+   (see buildPanelEmpty), centered in whatever room the list had. Icons
+   drawn at 22px keep the 16px ones' stroke weight (2 units of 24 there). */
+.panel-empty {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 20px 16px;
+  text-align: center;
+}
+.panel-empty-icon {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text-dim);
+}
+.panel-empty-icon svg { width: 22px; height: 22px; display: block; }
+.panel-empty-icon path { stroke-width: 1.5; }
+.panel-empty.error .panel-empty-icon { border-color: var(--fire-border); background: var(--fire-bg); color: var(--danger); }
+.panel-empty-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.panel-empty-text { max-width: 320px; font-size: 13px; line-height: 1.5; color: var(--text-dim); overflow-wrap: anywhere; }
+.panel-empty-action {
+  flex: none;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.panel-empty-action:hover { color: var(--accent); border-color: var(--accent); }
+.panel-empty-action svg { width: 14px; height: 14px; display: block; }
+.panel-loading { font-size: 13px; font-style: italic; color: var(--text-dim); }
+/* History sizes to its content on the project page, so its empty state
+   keeps close to it rather than taking room from the Explorer above. */
+.history-tab > .panel-empty { padding-block: 4px; }
+
+@container content (max-width: 900px) {
+  .project-view { padding: 0 16px 32px; }
+  .project-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas: "explorer" "history" "tasks" "journal";
+  }
+  /* Panels size to their content here, so the lists need their own cap —
+     except on a panel's own page, which keeps its fixed height. */
+  .panel-scroll { max-height: 420px; }
+  .project-section-page .panel-scroll { max-height: none; }
+}
+.journal-tab { display: flex; flex-direction: column; gap: 10px; }
+.journal-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-right: 2px;
+}
+.journal-day { display: flex; flex-direction: column; gap: 10px; }
+/* A plain rule sitting in the gap between two .journal-day blocks — day
+   boundaries get a visible line, entries within a day get gap only. */
+.journal-day-divider { flex: none; border-top: 1px solid var(--border); }
+.journal-entry {
+  display: flex;
+  gap: 10px;
+}
+/* Shown only on a day's first entry — the date badge stands in for a
+   separate day heading, so later entries that same day just get this
+   column's width reserved (blank) to keep content aligned underneath. */
+.journal-entry-date {
+  flex: none;
+  width: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+}
+.journal-entry-date-month {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+}
+.journal-entry-date-day { font-size: 20px; font-weight: 700; color: var(--text); }
+.journal-entry-date.is-today .journal-entry-date-day { color: var(--accent); }
+.journal-entry-date-year { font-size: 10px; color: var(--text-dim); }
+.journal-entry-content { flex: 1; min-width: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+.journal-entry-dash { color: var(--text-dim); }
+.journal-entry-time { margin-top: 2px; font-size: 12px; line-height: 1.4; color: var(--text-dim); white-space: normal; }
+/* A day's reported files (see buildJournalDayFiles), always shown on one
+   row that wraps, lined up with the entries' text rather than their date
+   column. Each is an icon and name like an Explorer file, colored like its
+   git decorations — green created, amber modified, red deleted. */
+.journal-files { margin-left: 50px; display: flex; flex-wrap: wrap; gap: 4px 14px; padding-bottom: 4px; }
+.journal-file { min-width: 0; display: inline-flex; align-items: baseline; gap: 6px; font-size: 14px; }
+.journal-file-name { min-width: 0; overflow-wrap: anywhere; }
+.journal-file.created .file-tree-icon, .journal-file.created .journal-file-name { color: var(--ok); }
+.journal-file.modified .file-tree-icon, .journal-file.modified .journal-file-name { color: #b45309; }
+.journal-file.deleted .file-tree-icon, .journal-file.deleted .journal-file-name { color: var(--danger); }
+.journal-composer {
+  flex: none;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.journal-input-wrap { position: relative; }
+/* A fixed height shared with the Tasks composer's box
+   (.task-composer-input), so the two composers match side by side —
+   this one's shorter footer strip leaves room for an extra line of text. */
+.journal-input {
+  width: 100%;
+  height: 132px;
+  resize: none;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px 44px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  box-sizing: border-box;
+}
+.journal-input:focus { outline: none; border-color: var(--accent); }
+/* Overlaid on the textarea's own bottom padding, not a sibling below it —
+   the counter/button read as built into the box, like a chat input. */
+.journal-input-footer {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none; /* clicks in the empty strip fall through to the textarea underneath */
+}
+.journal-counter { font-size: 11px; color: var(--text-dim); }
+.journal-add-btn {
+  pointer-events: auto;
+  flex: none;
+  height: 34px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.journal-add-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.journal-add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.date-calendar { width: 284px; max-width: none; display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+.date-calendar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.date-calendar-title { font-size: 13px; font-weight: 600; }
+.date-calendar-nav {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.date-calendar-nav:hover:not(:disabled) { color: var(--text); background: var(--bg); }
+.date-calendar-nav:disabled { opacity: 0.3; cursor: default; }
+.date-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; }
+.date-calendar-weekday { padding: 2px 0 4px; text-align: center; font-size: 11px; font-weight: 600; color: var(--text-dim); }
+/* The cell carries the range shading edge to edge; the number inside
+   carries the circle (hover, today's outline, the range's two ends). */
+.date-calendar-day {
+  position: relative;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.date-calendar-num {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+.date-calendar-day:hover .date-calendar-num { background: var(--bg); }
+.date-calendar-day.outside { color: var(--text-dim); opacity: 0.55; }
+/* Outside the calendar's bounds — for the Journal, before the project
+   existed or after today (see journalCalendarBounds). */
+.date-calendar-day:disabled { color: var(--text-dim); opacity: 0.3; cursor: default; }
+.date-calendar-day:disabled:hover .date-calendar-num { background: none; }
+.date-calendar-day.today .date-calendar-num { box-shadow: inset 0 0 0 1px var(--accent); }
+.date-calendar-day.has-items::after {
+  content: "";
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.date-calendar-day.in-range,
+.date-calendar-day.preview { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.date-calendar-day.range-start { border-radius: 999px 0 0 999px; }
+.date-calendar-day.range-end { border-radius: 0 999px 999px 0; }
+.date-calendar-day.range-start.range-end { border-radius: 999px; }
+.date-calendar-day.range-start .date-calendar-num,
+.date-calendar-day.range-end .date-calendar-num { background: var(--accent); color: #fff; font-weight: 600; }
+.date-calendar-day.range-start.has-items::after,
+.date-calendar-day.range-end.has-items::after { background: #fff; }
+/* A half-picked range previews exactly like a finished one: the extra
+   .date-calendar-grid lets these win over the current filter's shape. */
+.date-calendar-grid .date-calendar-day.preview { border-radius: 0; }
+.date-calendar-grid .date-calendar-day.preview.preview-start { border-radius: 999px 0 0 999px; }
+.date-calendar-grid .date-calendar-day.preview.preview-end { border-radius: 0 999px 999px 0; }
+.date-calendar-grid .date-calendar-day.preview.preview-start.preview-end { border-radius: 999px; }
+.date-calendar-day.preview-start .date-calendar-num,
+.date-calendar-day.preview-end .date-calendar-num { background: var(--accent); color: #fff; font-weight: 600; }
+.date-calendar-day.preview-start.has-items::after,
+.date-calendar-day.preview-end.has-items::after { background: #fff; }
+.date-calendar-hint { text-align: center; font-size: 11px; color: var(--text-dim); }
+.date-calendar-foot { display: flex; gap: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
+.date-calendar-preset {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.date-calendar-preset:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.date-calendar-preset:disabled { opacity: 0.4; cursor: default; }
+/* The preset matching the applied range, tinted like the Tasks header's
+   checked counts. */
+.date-calendar-preset.active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+}
+/* Clear is an action, not a pick: red text with no box, so it reads
+   apart from the presets. */
+.date-calendar-preset.clear { margin-left: auto; border-color: transparent; background: none; color: var(--danger); }
+.date-calendar-preset.clear:hover:not(:disabled) { color: var(--danger); border-color: var(--fire-border); background: var(--fire-bg); }
+.tasks-tab { display: flex; flex-direction: column; gap: 10px; }
+/* A panel's filter field (see buildPanelFilter) — Explorer, Tasks and
+   Journal each have one: the search text, a "3 of 27" count and a
+   clear-all button, with any dropdowns (tags, date) as divided segments at
+   its right end. */
+.panel-filter {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.panel-filter:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.panel-filter:has(.panel-filter-input:focus),
+.panel-filter:has(.dropdown.open) { border-color: var(--accent); }
+.panel-filter-icon { flex: none; align-self: center; margin: 0 8px 0 10px; color: var(--text-dim); }
+.panel-filter-input {
+  flex: 1;
+  min-width: 60px;
+  padding: 9px 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.panel-filter-input:focus { outline: none; }
+.panel-filter-input::placeholder { color: var(--text-dim); }
+.panel-filter-status {
+  flex: none;
+  align-self: center;
+  padding-left: 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.panel-filter-clear {
+  flex: none;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  margin: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.panel-filter-clear:hover { color: var(--accent); }
+/* Their own display values would otherwise beat the hidden attribute's
+   UA display: none. */
+.panel-filter-status[hidden],
+.panel-filter-clear[hidden] { display: none; }
+/* The words a filter's search found, in the Explorer's and Journal's
+   results (see appendHighlighted). */
+.filter-match {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: inherit;
+}
+/* The tags and date dropdowns, reshaped from bordered buttons into
+   segments of the field: full height, split off by a divider. */
+.panel-filter .dropdown { flex: none; display: flex; border-left: 1px solid var(--border); }
+.panel-filter .dropdown-toggle {
+  min-width: 0;
+  gap: 6px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--text-dim);
+  text-transform: none;
+}
+.panel-filter .dropdown-toggle:hover,
+.panel-filter .dropdown.open .dropdown-toggle {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+.panel-filter .dropdown .dropdown-toggle.active { color: var(--accent); }
+.panel-filter > .dropdown:last-child > .dropdown-toggle { border-radius: 0 5px 5px 0; }
+/* The date segment gives up width first, its label trailing off, so a
+   long range in a narrow panel doesn't squeeze the search text away. */
+.panel-filter .filter-date-dropdown { flex: 0 1 auto; min-width: 0; }
+.filter-date-toggle svg { flex: none; }
+.filter-date-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Due date / Date added, atop the Tasks calendar: which of a task's dates
+   the picked days are matched against. */
+.task-filter-seg { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.task-filter-seg-btn {
+  flex: 1;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border: none;
+  background: var(--bg);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.task-filter-seg-btn + .task-filter-seg-btn { border-left: 1px solid var(--border); }
+.task-filter-seg-btn:hover { color: var(--text); }
+.task-filter-seg-btn.active { background: var(--accent); color: #fff; }
+.task-list {
+  display: flex;
+  flex-direction: column;
+  padding-right: 2px;
+}
+.task-row {
+  display: flex;
+  /* Top-, not center-, aligned — a task's title + description span
+     multiple lines, and centering would drift the checkbox and the
+     edit/archive/delete buttons down toward the middle of that taller
+     row instead of lining up with its first line. */
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+.task-row:first-child { border-top: none; }
+/* Whichever task's data is currently loaded into the composer below for
+   editing — a plain background tint reads as "in progress" without
+   the layout disruption a border/padding change would cause. Applied
+   together with .disabled below, not instead of it: its own checkbox/
+   archive/delete need to be blocked too while its data sits in the
+   composer unsaved, same as while a request against it is in flight. */
+.task-row.editing { background: var(--bg); border-radius: 6px; }
+/* Either a create/update/delete request for this task is in flight, or
+   it's the one loaded in the composer for editing — its own controls are
+   individually disabled too (see buildTaskRow/refreshTaskRowDisabled), this
+   just makes that readable at a glance. cursor here covers the row's
+   plain content (text/meta have no cursor of their own, so they'd
+   otherwise just inherit "auto"); the checkbox and buttons each carry
+   their own cursor: pointer, so they need their own :disabled override
+   too (below) rather than relying on inheritance. */
+.task-row.disabled { opacity: 0.6; cursor: not-allowed; }
+.task-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.task-title { font-size: 15px; font-weight: 600; line-height: 1.4; word-break: break-word; }
+.task-description { font-size: 14px; line-height: 1.4; color: var(--text-dim); white-space: pre-wrap; word-break: break-word; }
+.task-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; color: var(--text-dim); }
+.task-dates { margin-top: 10px; }
+.task-dates + .task-meta { margin-top: 2px; }
+/* Tags are plain "#tag" text, not pills, tinted from the accent so they
+   read apart from the gray dates above and the ID badge before them (mixed
+   toward --text so the tint stays legible on both themes' panels). */
+.task-tag { flex: none; color: color-mix(in srgb, var(--accent) 75%, var(--text)); }
+.task-copy + .task-tag { margin-left: 4px; }
+/* The ID badge is the copy button, with its copy icon inside it after
+   the code. Its code is in full text color, a step up from the dim
+   dates, as what a task is referred to by. */
+.task-copy {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 4px 1px 6px;
+  cursor: pointer;
+}
+.task-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.task-copy-icon { display: inline-flex; opacity: 0.75; }
+.task-copy-icon svg { width: 12px; height: 12px; }
+.task-copy:hover { color: var(--text); border-color: var(--accent); }
+.task-copy:hover .task-copy-icon, .task-copy.copied .task-copy-icon { opacity: 1; }
+.task-copy.copied { color: var(--ok); border-color: var(--ok); }
+.task-meta-sep { color: var(--text-dim); }
+.task-due.overdue { color: var(--danger); font-weight: 600; }
+.task-row.done .task-title { color: var(--text-dim); text-decoration: line-through; }
+.task-end { flex: none; display: flex; align-items: center; gap: 2px; }
+.task-action-btn {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-dim);
+  padding: 0;
+  cursor: pointer;
+}
+.task-action-btn svg { width: 14px; height: 14px; display: block; }
+.task-action-btn:hover { color: var(--text); background: var(--bg); }
+.task-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.task-action-btn:disabled:hover { color: var(--text-dim); background: none; }
+.task-action-btn.active { color: var(--accent); background: var(--bg); }
+.task-composer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.task-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  box-sizing: border-box;
+}
+.task-input:focus { outline: none; border-color: var(--accent); }
+/* flex: none — .task-input's flex: 1 is for sitting in a row; in the
+   composer's column it would otherwise mean growing vertically. */
+.task-title-input { flex: none; width: 100%; font-weight: 600; }
+/* Matches the Journal panel's composer box exactly: a textarea with its
+   controls tucked into its own bottom padding. Journal only ever fits a
+   counter and one button down there; this one also has the due date
+   picker and the tags dropdown, so the reserved strip is taller and the
+   footer holds more than just those two. */
+.task-composer-input-wrap { position: relative; }
+.task-composer-input { width: 100%; height: 132px; resize: none; padding: 8px 10px 64px; } /* height: see .journal-input */
+/* Overlaid on the textarea's own bottom padding, not below it — same
+   technique as .journal-input-footer. pointer-events: none on the strip so
+   clicks in its empty space fall through to the textarea underneath, with
+   each actual control opting back in via pointer-events: auto. Stacked in
+   a column — the counter on its own line above the controls row — rather
+   than sharing one row with them, since it isn't paired with any single
+   control the way Journal's counter-and-button pair is. */
+.task-composer-footer {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+.task-composer-footer-row { display: flex; align-items: center; gap: 8px; }
+.task-composer-footer-row > * { pointer-events: auto; }
+.task-composer-counter { flex: none; font-size: 11px; color: var(--text-dim); }
+/* The composer's due date: a dropdown toggle as wide as the date input it
+   replaced, its label trailing off if a far-off year makes it long. */
+.task-due-dropdown { flex: none; }
+.task-due-toggle {
+  width: 150px;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 9px 10px;
+  color: var(--text-dim);
+  text-transform: none;
+}
+.task-due-toggle.active { color: var(--text); }
+.task-due-toggle svg { flex: none; }
+.task-due-toggle .dropdown-caret { margin-left: auto; }
+.task-due-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-add-btn {
+  flex: none;
+  height: 34px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.task-add-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.task-add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.history-tab { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+.history-columns { display: flex; flex-direction: row; gap: 20px; }
+.history-row { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.history-row-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+.history-row-line { font-size: 14px; line-height: 1.4; word-break: break-word; }
+.history-row-line-dim { font-size: 12px; color: var(--text-dim); }
+.git-push-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 4px 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.git-push-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.git-push-status { font-size: 12px; color: var(--text-dim); }
+.git-push-message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--text);
+}
+.git-push-message.empty { font-size: 12px; font-style: italic; color: var(--text-dim); }
+/* Same size as the Tasks/Journal composers' Add buttons. */
+.git-push-btn {
+  flex: none;
+  height: 34px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.git-push-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.git-push-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.explorer-tab { display: flex; flex-direction: column; gap: 10px; }
+.explorer-list { display: flex; flex-direction: column; }
+.file-tree { display: flex; flex-direction: column; }
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+.file-tree-row[data-dir="true"] { cursor: pointer; }
+.file-tree-row:hover { background: var(--bg); }
+/* A file or folder icon beside its name — here and in a journal day's
+   files — lines up by the name's baseline: its box's bottom on the
+   baseline, then dropped 4px, so its middle is 4px above it, level with
+   the body of the name's letters (3.3–4.7px above it for file names).
+   Centered in the row instead, it sat 1–2px high and moved by a pixel
+   with wherever the row happened to fall between two pixels; tied to the
+   baseline it lands the same in every row. A folder's caret lines up by
+   the baseline too. Its box takes its baseline from the 6px-tall chevron
+   centered inside it, which leaves the box's middle 3px above the name's
+   baseline, so it's raised 1px to sit 4px above, level with the icon. */
+.file-tree-icon { flex: none; display: flex; align-self: baseline; position: relative; top: 4px; color: var(--text-dim); }
+.file-tree-icon svg { display: block; }
+.file-tree-row .json-toggle { align-self: baseline; position: relative; top: -1px; }
+.file-tree-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  align-self: baseline;
+  font-size: 14px;
+}
+/* Groups the bin button and the git-status letter together at the row's
+   far right (the auto margin lives here, not on the button, so the badge
+   — which should always be visible — doesn't move on hover). */
+.file-tree-end {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.file-tree-delete {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-dim);
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+.file-tree-row:hover .file-tree-delete,
+.file-tree-delete:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.file-tree-delete svg { width: 14px; height: 14px; display: block; }
+.file-tree-delete:hover { color: var(--danger); background: var(--panel); }
+.file-tree-badge {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.file-tree-message {
+  padding: 4px 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+.file-tree-message.error { color: var(--danger); font-style: normal; }
+/* A content match's lines under its file (see buildFileTreeSnippets). */
+.file-tree-snippets { display: flex; flex-direction: column; gap: 1px; padding: 0 4px 4px; }
+.file-tree-snippet {
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.file-tree-snippet-line {
+  flex: none;
+  min-width: 3ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+.file-tree-snippet-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text-dim);
+}
+.file-tree-snippet-text .filter-match { color: var(--text); }
+.file-tree-snippet-more { padding-left: calc(3ch + 8px); font-size: 12px; font-style: italic; color: var(--text-dim); }
+/* Mirrors VS Code's git decoration colors: amber for modified/renamed,
+   green for new (added/untracked), red for conflicts, dimmed for ignored.
+   Applied to the row so both its icon and label pick up the color. */
+.file-tree-row.git-modified .file-tree-icon,
+.file-tree-row.git-modified .file-tree-label,
+.file-tree-row.git-modified .file-tree-badge,
+.file-tree-row.git-renamed .file-tree-icon,
+.file-tree-row.git-renamed .file-tree-label,
+.file-tree-row.git-renamed .file-tree-badge {
+  color: #b45309;
+}
+.file-tree-row.git-added .file-tree-icon,
+.file-tree-row.git-added .file-tree-label,
+.file-tree-row.git-added .file-tree-badge,
+.file-tree-row.git-untracked .file-tree-icon,
+.file-tree-row.git-untracked .file-tree-label,
+.file-tree-row.git-untracked .file-tree-badge {
+  color: var(--ok);
+}
+.file-tree-row.git-conflicted .file-tree-icon,
+.file-tree-row.git-conflicted .file-tree-label,
+.file-tree-row.git-conflicted .file-tree-badge,
+.file-tree-row.git-deleted .file-tree-icon,
+.file-tree-row.git-deleted .file-tree-label,
+.file-tree-row.git-deleted .file-tree-badge {
+  color: var(--danger);
+}
+.file-tree-row.git-ignored .file-tree-icon,
+.file-tree-row.git-ignored .file-tree-label,
+.file-tree-row.git-ignored .file-tree-badge {
+  color: var(--text-dim);
+  opacity: 0.55;
+}
+
+.confirm-overlay { z-index: 60; }
+.confirm-panel {
+  max-width: 420px;
+  gap: 16px;
+}
+.confirm-message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-line;
+}
+.confirm-hint {
+  margin: -8px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.confirm-hint strong { color: var(--text); font-weight: 600; }
+.confirm-input {
+  padding: 9px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  width: 100%;
+}
+.confirm-input:focus { outline: none; border-color: var(--accent); }
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.confirm-btn {
+  padding: 9px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+}
+.confirm-btn.danger { border-color: var(--danger); background: var(--danger); }
+.confirm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---- Shell: the columns beside the left menu (the project list, the page
+   and the form column), the toolbar (project pages only) and the Add/Edit
+   drawer (see views/index.ejs). ---- */
+.toolbar[hidden] { display: none; }
+/* The project list sits 16px from the left menu, like the gaps between the
+   project's panels, and 32px from the page with its line halfway (its own
+   padding on both sides, see below); the form column keeps 32px on both
+   sides. Capped at the page's 1800px plus both side columns (368 + 432)
+   and centered past that, so both outer spaces grow alike. */
+.app-columns {
+  display: flex;
+  align-items: flex-start;
+  max-width: 2600px;
+  margin: 0 auto;
+}
+/* The project page's breakpoints measure this (see the top of this file).
+   Raised over the side columns, so a menu opened near the page's edge
+   overlaps them rather than slipping under. */
+.app-content {
+  flex: 1;
+  min-width: 0;
+  container: content / inline-size;
+  position: relative;
+  z-index: 1;
+}
+/* Level with the project's header, under the toolbar's row. Once the page
+   scrolls that far it stays in view, 16px from the top. */
+.create-side {
+  flex: 0 0 400px;
+  position: sticky;
+  top: 16px;
+  margin: var(--toolbar-height) 32px 0 0;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding-bottom: 16px;
+}
+.create-side[hidden] { display: none; }
+/* Beside the project list (from 1280px, on project pages and /projects),
+   none on the page's side: the 32px between them is the list's own, where
+   its line to the page runs (ScrollRail in public/js/app/projects.js). */
+@media (min-width: 1280px) {
+  .toolbar,
+  .project-view,
+  .projects-empty { padding-left: 0; }
+}
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 45; /* over the left menu and toast; under confirm dialogs (50) */
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.45);
+}
+.drawer-overlay[hidden] { display: none; }
+.drawer-panel {
+  width: min(440px, 100%);
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  box-shadow: -16px 0 40px rgba(0, 0, 0, 0.25);
+  padding: 20px;
+  animation: drawer-in 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes drawer-in {
+  from { transform: translateX(32px); opacity: 0; }
+}
+.drawer-panel .add-form-card { border-color: var(--border); }

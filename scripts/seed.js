@@ -1,10 +1,11 @@
-// Fills the local database with starter accounts: an admin, a project lead
-// and a dev (Claude) who are on every project, and one client per project
-// except Dispatch. The projects are the ones already in the database (the
-// dashboard's registry), plus Dispatch's own, created here if it's missing
-// since the dashboard never adds it. Safe to rerun: records are matched by
-// email or project name and set back to these values, and nothing else in the
-// database is touched. Every account gets SEED_PASSWORD from .env.
+// Fills the local database with starter accounts: an admin, a dev (Claude)
+// who is on every project, and one client per project except Dispatch. Leads
+// are real people's accounts, so the seed makes none. The projects are the
+// ones already in the database (the dashboard's registry), plus Dispatch's
+// own, created here if it's missing since the dashboard never adds it. Safe
+// to rerun: records are matched by email or project name and set back to
+// these values, and nothing else in the database is touched. Every account
+// gets SEED_PASSWORD from .env.
 require("dotenv").config({ override: true, quiet: true });
 const path = require("path");
 const mongoose = require("mongoose");
@@ -57,10 +58,8 @@ async function main() {
   }
 
   await upsertUser(`admin@${EMAIL_DOMAIN}`, { name: "Admin", isAdmin: true });
-  const lead = await upsertUser(`lead@${EMAIL_DOMAIN}`, { name: "Project Lead", isAdmin: false });
   const dev = await upsertUser(`claude@${EMAIL_DOMAIN}`, { name: "Claude", isAdmin: false });
   for (const project of projects) {
-    await setRole(lead, project, "lead");
     await setRole(dev, project, "dev");
     if (project.name === DISPATCH_PROJECT) continue; // internal: no client
     const client = await upsertUser(`client.${emailSlug(project.name)}@${EMAIL_DOMAIN}`, { name: `${project.name} client`, isAdmin: false });

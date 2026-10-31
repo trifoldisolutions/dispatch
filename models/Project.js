@@ -3,6 +3,10 @@ const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
 const PROJECT_CATEGORIES = ["fire", "breeze", "cold"];
+// Where the work stands for the client: still going, or delivered. Separate
+// from the category, which is about our own scheduling (a Cold project can
+// still be going for its client).
+const PROJECT_STATUSES = ["active", "finished"];
 
 // A project is keyed by its folder name, as the dashboard's /<name> pages are.
 // Its category and port are its place in the dashboard's registry: with a
@@ -17,6 +21,7 @@ const ProjectSchema = new Schema(
     category: { type: String, enum: PROJECT_CATEGORIES, default: null },
     port: { type: Number, default: null },
     position: { type: Number, default: null }, // order within Unassigned, which has no ports to sort by
+    status: { type: String, enum: PROJECT_STATUSES, default: "active" },
   },
   { timestamps: true }
 );

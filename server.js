@@ -6,7 +6,11 @@ const net = require("net");
 const crypto = require("crypto");
 const { spawn, exec } = require("child_process");
 const { promisify } = require("util");
+const helmet = require("helmet");
 const { connectDatabase } = require("./db");
+const { sessions, loadUser, requireLogin, isOnline, recentlySeenUserIds, touchUsers, authRoutes } = require("./auth");
+const { createLive } = require("./live");
+const { avatarUrl, displayName, avatarRoutes } = require("./people");
 const Project = require("./models/Project");
 const Membership = require("./models/Membership");
 const execAsync = promisify(exec);
@@ -14,6 +18,11 @@ const execAsync = promisify(exec);
 const PORT = 3000;
 const PROJECTS_ROOT = path.join(__dirname, "..");
 const SELF_PROJECT = path.basename(__dirname); // Dispatch's own project: in the database, never in the registry
+// The app's own pages, beside each project's /<name>, and the other first
+// path segments Dispatch answers on. A project folder can't take one of these
+// names, or its page would be unreachable.
+const APP_PAGES = ["projects"];
+const RESERVED_NAMES = new Set([...APP_PAGES, "ports", "inbox", "chat", "login", "logout", "api", "css", "js", "vendor", "live", "avatars"]);
 const CATEGORIES = ["fire", "breeze", "cold"];
 const CATEGORY_LIMITS = { fire: 2, breeze: 4 }; // cold is unlimited
 const PROJECT_DESCRIPTION_MAX_LENGTH = 230; // mirrors the create form's description maxlength in views/index.ejs
@@ -63,43 +72,124 @@ function isPortServing(port) {
 }
 
 const app = express();
+
+// What open pages hear about without polling (see live.js).
+const live = createLive({
+  sessions,
+  loadUser,
+  isPortServing,
+  async watchedPorts() {
+    const projects = await Project.find({ port: { $ne: null }, name: { $ne: SELF_PROJECT } }, { port: 1 }).lean();
+    return projects.map((project) => project.port);
+  },
+  runsSnapshot,
+  onlineUserIds: recentlySeenUserIds,
+  touchUsers,
+});
+
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
-app.use(express.json());
+app.disable("x-powered-by");
 
-app.get("/", (req, res) => {
+// helmet's security headers. Its CSP only runs scripts served from this
+// origin, so each response gets a fresh nonce for the pages' inline <script>
+// (cspNonce in the views). Locally Dispatch is plain http, where upgrading
+// requests to https would break every one of them.
+app.use((req, res, next) => {
+  res.locals.cspNonce = crypto.randomBytes(16).toString("base64");
+  next();
+});
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        "script-src": ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
+        "upgrade-insecure-requests": process.env.NODE_ENV === "production" ? [] : null,
+      },
+    },
+  })
+);
+
+// The pages' stylesheets and scripts (public/css, public/js). Served ahead of
+// the login check: they hold no data, and the login page needs none of them.
+// No directory redirects or index files, so /js or /css can't answer for a
+// project page.
+app.use(express.static(path.join(__dirname, "public"), { index: false, redirect: false }));
+
+// Preact, htm and signals, served as-is from node_modules: the pages load
+// them as ES modules through the import map in views/index.ejs, with no build
+// step. Only these files, so /vendor can't reach anything else in there.
+const VENDOR_FILES = {
+  "preact.mjs": "preact/dist/preact.mjs",
+  "preact-hooks.mjs": "preact/hooks/dist/hooks.mjs",
+  "htm.mjs": "htm/dist/htm.module.js",
+  "signals-core.mjs": "@preact/signals-core/dist/signals-core.module.js",
+  "signals.mjs": "@preact/signals/dist/signals.module.js",
+};
+app.get("/vendor/:file", (req, res, next) => {
+  const file = VENDOR_FILES[req.params.file];
+  if (!file) return next();
+  res.type("application/javascript").sendFile(path.join(__dirname, "node_modules", file));
+});
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: false })); // the login form
+app.use(sessions, loadUser);
+app.use(authRoutes);
+app.use(avatarRoutes);
+// The left menu's account button shows the user's picture when there is one.
+app.locals.avatarUrl = avatarUrl;
+
+// Home (/), and /projects, which opens your first project once the page
+// has your list (old links, or the left menu before it loads). Like the
+// project pages below, they're the same page: index.ejs reads the path and
+// shows that one.
+app.get(["/", ...APP_PAGES.map((page) => `/${page}`)], requireLogin, (req, res) => {
   res.render("index");
 });
+
+// The port board was folded into the project list, which shows each port.
+app.get("/ports", (req, res) => res.redirect("/projects"));
 
 // Each project has its own page at /<name>. It's the same page as the
 // dashboard — index.ejs reads the path and renders that project — so a
-// refresh, bookmark or new tab on a project's address lands back on it. Only
-// real project folders get one; anything else (favicon.ico, a typo) falls
-// through to a plain 404.
-app.get("/:name", (req, res, next) => {
-  if (!listProjectFolders().includes(req.params.name)) return next();
-  res.render("index");
-});
+// refresh, bookmark or new tab on a project's address lands back on it. A
+// name with no folder (a typo, a removed project) still gets the page, with
+// a 404 status, so it can say so beside the project list; a file name
+// (favicon.ico) falls through to a plain 404. The login check comes first,
+// so a logged-out visitor can't tell project names from typos.
+function serveProjectPage(req, res, next) {
+  if (listProjectFolders().includes(req.params.name)) return res.render("index");
+  if (req.params.name.includes(".")) return next();
+  res.status(404).render("index");
+}
+
+app.get("/:name", requireLogin, serveProjectPage);
 
 // Each of a project page's panels also has a page of its own at
 // /<name>/<section> (PROJECT_SECTIONS in index.ejs), served the same way,
 // and so does the header's Staff (STAFF_SECTION there).
 const PROJECT_SECTIONS = ["explore", "tasks", "history", "journal", "staff"];
 
-app.get("/:name/:section", (req, res, next) => {
-  if (!PROJECT_SECTIONS.includes(req.params.section) || !listProjectFolders().includes(req.params.name)) return next();
-  res.render("index");
-});
+// The section is checked before the login, since two-part API addresses
+// (/api/registry) match this route too and must go on to their own.
+function onlySectionPages(req, res, next) {
+  next(PROJECT_SECTIONS.includes(req.params.section) ? undefined : "route");
+}
+
+app.get("/:name/:section", onlySectionPages, requireLogin, serveProjectPage);
 
 // The registry is stored as the projects collection (see models/Project.js)
 // and handed to the dashboard in the shape it has always used: each category
-// maps ports to { name, description, url? }, and unassigned is a list.
+// maps ports to { name, description, url?, status? }, and unassigned is a
+// list. A status is only there for a finished project.
 async function readRegistry() {
   const registry = { fire: {}, breeze: {}, cold: {}, unassigned: [] };
   const projects = await Project.find({ name: { $ne: SELF_PROJECT } }).sort({ port: 1, position: 1 }).lean();
   for (const project of projects) {
     const entry = { name: project.name, description: project.description };
     if (project.url) entry.url = project.url;
+    if (project.status === "finished") entry.status = "finished";
     if (project.port !== null && CATEGORIES.includes(project.category)) registry[project.category][project.port] = entry;
     else registry.unassigned.push(entry);
   }
@@ -108,12 +198,16 @@ async function readRegistry() {
 
 // Saves a whole (already validated) registry: every entry's place is set from
 // it, and a project that's no longer in it was deleted from the dashboard, so
-// its record and memberships go too.
+// its record and memberships go too. A status is only changed when the entry
+// has one (the Edit form always sends it), so a page that moves a project
+// without carrying its status along can't reset it.
 async function writeRegistry(data) {
   const placeProject = (entry, placement) => ({
     updateOne: {
       filter: { name: entry.name },
-      update: { $set: { description: entry.description, url: entry.url || "", ...placement } },
+      update: {
+        $set: { description: entry.description, url: entry.url || "", ...(entry.status ? { status: entry.status } : {}), ...placement },
+      },
       upsert: true,
     },
   });
@@ -223,6 +317,9 @@ function validateRegistry(data, existingNames) {
       if (!isValidSiteUrl(entry.url)) {
         return `live site for port ${port} must be an http(s) address`;
       }
+      if (entry.status !== undefined && !PROJECT_STATUSES.includes(entry.status)) {
+        return `status for port ${port} must be one of ${PROJECT_STATUSES.join(", ")}`;
+      }
       const nameKey = entry.name.trim().toLowerCase();
       if (seenNames.has(nameKey)) {
         return `"${entry.name}" is assigned more than once (also in ${seenNames.get(nameKey)})`;
@@ -252,6 +349,9 @@ function validateRegistry(data, existingNames) {
       if (!isValidSiteUrl(entry.url)) {
         return `live site for "${entry.name}" must be an http(s) address`;
       }
+      if (entry.status !== undefined && !PROJECT_STATUSES.includes(entry.status)) {
+        return `status for "${entry.name}" must be one of ${PROJECT_STATUSES.join(", ")}`;
+      }
       const nameKey = entry.name.trim().toLowerCase();
       if (seenNames.has(nameKey)) {
         return `"${entry.name}" is assigned more than once (also in ${seenNames.get(nameKey)})`;
@@ -267,6 +367,9 @@ function validateRegistry(data, existingNames) {
   if (newNames.length > 0) {
     const folders = new Set(listProjectFolders());
     for (const name of newNames) {
+      if (RESERVED_NAMES.has(name.toLowerCase())) {
+        return `"${name}" is one of Dispatch's own addresses, so its project page couldn't be reached; rename the folder`;
+      }
       if (!folders.has(name)) {
         return `"${name}" has no matching folder in the projects directory — create the project folder first`;
       }
@@ -281,6 +384,280 @@ app.get("/api/registry", async (req, res) => {
     res.json(await readRegistry());
   } catch (err) {
     res.status(500).json({ error: `failed to read registry: ${err.message}` });
+  }
+});
+
+// The roles that make someone staff, in the order they're listed. Clients are
+// on a project too, but aren't staff.
+const STAFF_ROLES = ["lead", "dev"];
+const PROJECT_STATUSES = Project.schema.path("status").enumValues;
+
+// A project's staff, from its memberships: leads first, then devs, each by
+// name, as [{ id, name, displayName, avatar, role, you, online }] — `you`
+// marks the logged-in user's own card, `online` whoever has Dispatch open
+// (see isOnline), `avatar` their picture's address or null (see people.js). These
+// are people's details, so unlike the rest of the API (for now) it needs a
+// login. A project with no record yet simply has no one on it.
+app.get("/api/projects/:name/staff", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "log in to see a project's staff" });
+  try {
+    const project = await Project.findOne({ name: req.params.name }, { _id: 1 }).lean();
+    if (!project) return res.json({ staff: [], clients: [] });
+    const memberships = await Membership.find({ project: project._id, role: { $in: STAFF_ROLES } })
+      .populate("user", { name: 1, email: 1, lastSeenAt: 1 })
+      .lean();
+    const staff = memberships
+      .filter((membership) => membership.user) // its account was deleted
+      .map(({ user, role }) => ({
+        id: String(user._id),
+        name: user.name,
+        displayName: displayName(user.name),
+        avatar: avatarUrl(user),
+        role,
+        you: String(user._id) === String(req.user._id),
+        online: isOnline(user),
+      }))
+      .sort((a, b) => STAFF_ROLES.indexOf(a.role) - STAFF_ROLES.indexOf(b.role) || a.name.localeCompare(b.name));
+    res.json({ staff, clients: await projectClients(project._id, req.user) });
+  } catch (err) {
+    res.status(500).json({ error: `failed to load staff: ${err.message}` });
+  }
+});
+
+// Who a project is for (usually one client), each with how many projects
+// they have with the studio: active (not finished) and all time.
+async function projectClients(projectId, viewer) {
+  const memberships = await Membership.find({ project: projectId, role: "client" }).populate("user", { name: 1, email: 1, lastSeenAt: 1 }).lean();
+  const users = memberships.map((membership) => membership.user).filter(Boolean); // an account deleted since
+  const theirs = await Membership.find({ user: { $in: users.map((user) => user._id) }, role: "client" })
+    .populate("project", { status: 1 })
+    .lean();
+  return users
+    .map((user) => {
+      const projects = theirs.filter((membership) => String(membership.user) === String(user._id) && membership.project);
+      return {
+        id: String(user._id),
+        name: user.name, // in full: a client is often a company
+        avatar: avatarUrl(user),
+        you: String(user._id) === String(viewer._id),
+        online: isOnline(user),
+        projects: { active: projects.filter((membership) => membership.project.status !== "finished").length, total: projects.length },
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ---- The logged-in user's own views (Home, Projects) ----------------------
+// These need a login and only ever show the user's own projects: those they
+// hold a membership on, or every project for an admin. Agents don't use them,
+// so unlike the rest of the API they can check permissions already.
+
+const HOME_TASK_LIMIT = 60;
+const HOME_ACTIVITY_DAYS = 14;
+const HOME_ACTIVITY_LIMIT = 40;
+const HOME_COMMIT_LIMIT = 30;
+const DUE_SOON_DAYS = 7;
+const COMMITS_CACHE_MS = 60 * 1000; // a project's recent commits, so reloading Home doesn't run git 20 times
+const recentCommitsCache = new Map(); // name -> { at, commits }
+
+function requireApiLogin(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: "log in first" });
+  next();
+}
+
+// [{ project (lean), role }] for the user: "admin" where an admin has no
+// membership of their own. Dispatch's own project is in the database too.
+async function projectsForUser(user) {
+  const memberships = await Membership.find({ user: user._id }).populate("project").lean();
+  const byName = new Map();
+  for (const { project, role } of memberships) {
+    if (project) byName.set(project.name, { project, role });
+  }
+  if (user.isAdmin) {
+    for (const project of await Project.find().lean()) {
+      if (!byName.has(project.name)) byName.set(project.name, { project, role: "admin" });
+    }
+  }
+  return [...byName.values()].sort((a, b) => a.project.name.localeCompare(b.project.name));
+}
+
+function todayDateOnly() {
+  return localDateString(new Date());
+}
+
+function addDaysDateOnly(dateStr, days) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return localDateString(new Date(y, m - 1, d + days));
+}
+
+// A project's tasks and journal days, or empty ones when its folder or files
+// are missing or unreadable: one broken project shouldn't blank Home.
+function readProjectTasksSafe(dir) {
+  try {
+    return readTasks(findTasksPath(dir)).tasks;
+  } catch {
+    return [];
+  }
+}
+
+function readProjectJournalSafe(dir) {
+  try {
+    const journalPath = findJournalPath(dir);
+    if (!fs.existsSync(journalPath)) return [];
+    return withJournalAudit(parseJournal(fs.readFileSync(journalPath, "utf8")), journalPath);
+  } catch {
+    return [];
+  }
+}
+
+function taskFigures(tasks, today) {
+  const soon = addDaysDateOnly(today, DUE_SOON_DAYS);
+  const figures = { open: 0, done: 0, overdue: 0, dueSoon: 0 };
+  for (const task of tasks) {
+    if (task.archived) continue;
+    if (task.done) {
+      figures.done++;
+      continue;
+    }
+    figures.open++;
+    if (task.dueDate && task.dueDate < today) figures.overdue++;
+    else if (task.dueDate && task.dueDate <= soon) figures.dueSoon++;
+  }
+  return figures;
+}
+
+async function recentCommits(name, dir) {
+  const cached = recentCommitsCache.get(name);
+  if (cached && Date.now() - cached.at < COMMITS_CACHE_MS) return cached.commits;
+  let commits = [];
+  try {
+    const { stdout } = await execAsync(
+      `git log --since="${HOME_ACTIVITY_DAYS} days ago" -n 10 --format=${GIT_LOG_FORMAT}`,
+      { cwd: dir, maxBuffer: 1024 * 1024 }
+    );
+    commits = stdout.split("\n").filter((line) => line.trim()).map(parseGitLogLine);
+  } catch {
+    // not a git repo, or no commits yet
+  }
+  recentCommitsCache.set(name, { at: Date.now(), commits });
+  return commits;
+}
+
+// The Projects page's list: each project with the user's role on it, its
+// place in the registry, and its task figures. Running/listening comes from
+// /api/running-projects and /api/port-status (and /live) like everywhere else.
+app.get("/api/me/projects", requireApiLogin, async (req, res) => {
+  try {
+    const today = todayDateOnly();
+    const folders = new Set(listProjectFolders());
+    const projects = (await projectsForUser(req.user)).map(({ project, role }) => {
+      const self = project.name === SELF_PROJECT;
+      const hasFolder = folders.has(project.name);
+      const dir = hasFolder ? resolveProjectDir(project.name) : null;
+      const days = dir ? readProjectJournalSafe(dir) : [];
+      const lastDay = days[0];
+      const lastEntry = lastDay && lastDay.entries[lastDay.entries.length - 1];
+      return {
+        name: project.name,
+        description: project.description || "",
+        url: project.url || "",
+        category: self ? null : project.category,
+        port: self ? PORT : project.port,
+        status: project.status || "active",
+        self,
+        role,
+        hasFolder,
+        tasks: taskFigures(dir ? readProjectTasksSafe(dir) : [], today),
+        lastActivity: lastEntry ? { date: lastDay.date, time: lastEntry.time, content: lastEntry.content } : null,
+      };
+    });
+    res.json({ projects });
+  } catch (err) {
+    res.status(500).json({ error: `failed to load your projects: ${err.message}` });
+  }
+});
+
+// Home: open tasks across the user's projects (overdue and soonest due
+// first), what happened lately (journal entries and commits), and the people
+// they work with. Tasks have no assignee yet, so "yours" means on your
+// projects; clients' projects are left out, since clients aren't staff.
+app.get("/api/me/home", requireApiLogin, async (req, res) => {
+  try {
+    const today = todayDateOnly();
+    const since = addDaysDateOnly(today, -HOME_ACTIVITY_DAYS);
+    const folders = new Set(listProjectFolders());
+    const mine = (await projectsForUser(req.user)).filter(({ role }) => role !== "client");
+
+    const tasks = [];
+    const activity = [];
+    const commitLists = [];
+    for (const { project } of mine) {
+      if (!folders.has(project.name)) continue;
+      const dir = resolveProjectDir(project.name);
+      for (const task of readProjectTasksSafe(dir)) {
+        if (task.done || task.archived) continue;
+        tasks.push({
+          project: project.name,
+          id: task.id,
+          title: task.title,
+          dueDate: task.dueDate || null,
+          tags: task.tags || [],
+          createdAt: task.createdAt || null,
+        });
+      }
+      for (const day of readProjectJournalSafe(dir)) {
+        if (day.date < since) continue;
+        for (const entry of day.entries) {
+          activity.push({ project: project.name, date: day.date, time: entry.time, content: entry.content, insertedAt: entry.insertedAt || null });
+        }
+      }
+      commitLists.push(recentCommits(project.name, dir).then((commits) => commits.map((c) => ({ project: project.name, ...c }))));
+    }
+
+    // Overdue first, then by due date, then undated ones newest first.
+    tasks.sort((a, b) => {
+      if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+      if (a.dueDate) return -1;
+      if (b.dueDate) return 1;
+      return String(b.createdAt).localeCompare(String(a.createdAt));
+    });
+    const sortKey = (item) => item.insertedAt || `${item.date}T${item.time}`;
+    activity.sort((a, b) => sortKey(b).localeCompare(sortKey(a)));
+    const commits = (await Promise.all(commitLists)).flat().sort((a, b) => b.date.localeCompare(a.date));
+
+    // Staff who share a project with the user, online first.
+    const projectIds = mine.map(({ project }) => project._id);
+    const shared = await Membership.find({ project: { $in: projectIds }, role: { $in: STAFF_ROLES } })
+      .populate("user", { name: 1, email: 1, lastSeenAt: 1, status: 1 })
+      .lean();
+    const people = new Map();
+    for (const { user } of shared) {
+      if (!user || user.status === "suspended") continue;
+      const id = String(user._id);
+      const person = people.get(id) || {
+        id,
+        name: user.name,
+        displayName: displayName(user.name),
+        avatar: avatarUrl(user),
+        online: isOnline(user),
+        you: id === String(req.user._id),
+        projects: 0,
+      };
+      person.projects++;
+      people.set(id, person);
+    }
+
+    res.json({
+      today,
+      tasks: tasks.slice(0, HOME_TASK_LIMIT),
+      taskTotal: tasks.length,
+      overdue: tasks.filter((t) => t.dueDate && t.dueDate < today).length,
+      activity: activity.slice(0, HOME_ACTIVITY_LIMIT),
+      commits: commits.slice(0, HOME_COMMIT_LIMIT),
+      people: [...people.values()].sort((a, b) => b.online - a.online || a.name.localeCompare(b.name)),
+    });
+  } catch (err) {
+    res.status(500).json({ error: `failed to load Home: ${err.message}` });
   }
 });
 
@@ -1025,6 +1402,7 @@ app.post("/api/project-folders/:name/journal", (req, res) => {
     const journalPath = findJournalPath(dir);
     const updated = appendJournalEntry(journalPath, content, files);
     res.json({ days: withJournalAudit(parseJournal(updated), journalPath) });
+    live.projectChanged(req.params.name, "journal");
   } catch (err) {
     res.status(500).json({ error: `failed to update journal: ${err.message}` });
   }
@@ -1189,6 +1567,7 @@ app.post("/api/project-folders/:name/tasks", (req, res) => {
     });
     writeTasks(tasksPath, data);
     res.json({ tasks: data.tasks, tags: data.tags });
+    live.projectChanged(req.params.name, "tasks");
   } catch (err) {
     res.status(500).json({ error: `failed to update tasks: ${err.message}` });
   }
@@ -1244,6 +1623,7 @@ app.patch("/api/project-folders/:name/tasks/:id", (req, res) => {
     task.updatedAt = now;
     writeTasks(tasksPath, data);
     res.json({ tasks: data.tasks, tags: data.tags });
+    live.projectChanged(req.params.name, "tasks");
   } catch (err) {
     res.status(500).json({ error: `failed to update tasks: ${err.message}` });
   }
@@ -1261,6 +1641,7 @@ app.delete("/api/project-folders/:name/tasks/:id", (req, res) => {
     data.tasks = data.tasks.filter((t) => t.id !== id);
     writeTasks(tasksPath, data);
     res.json({ tasks: data.tasks, tags: data.tags });
+    live.projectChanged(req.params.name, "tasks");
   } catch (err) {
     res.status(500).json({ error: `failed to update tasks: ${err.message}` });
   }
@@ -1290,12 +1671,16 @@ function seedProjectFolder(dir, name) {
 app.post("/api/project-folders/:name", (req, res) => {
   const dir = resolveProjectDir(req.params.name);
   if (!dir) return res.status(400).json({ error: `invalid project name "${req.params.name}"` });
+  if (RESERVED_NAMES.has(req.params.name.toLowerCase())) {
+    return res.status(400).json({ error: `"${req.params.name}" is one of Dispatch's own addresses; pick another name` });
+  }
   if (fs.existsSync(dir)) return res.status(409).json({ error: `"${req.params.name}" already exists` });
   try {
     fs.mkdirSync(dir);
     seedProjectFolder(dir, req.params.name);
     appendJournalEntry(findJournalPath(dir), "Project was created");
     res.json({ ok: true });
+    live.registryChanged();
   } catch (err) {
     res.status(500).json({ error: `failed to create project folder: ${err.message}` });
   }
@@ -1313,6 +1698,7 @@ app.delete("/api/project-folders/:name", (req, res) => {
   try {
     fs.rmSync(dir, { recursive: true, force: true });
     res.json({ ok: true });
+    live.registryChanged();
   } catch (err) {
     res.status(500).json({ error: `failed to delete project folder: ${err.message}` });
   }
@@ -1343,6 +1729,7 @@ app.put("/api/registry", async (req, res) => {
     }
     syncAllEnvPorts(req.body);
     res.json({ ok: true });
+    live.registryChanged();
   } catch (err) {
     res.status(500).json({ error: `failed to write registry: ${err.message}` });
   }
@@ -1592,12 +1979,17 @@ app.post("/api/projects/:name/stop", async (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/running-projects", (req, res) => {
+// name -> { status, error, twError } for each project Dispatch started.
+function runsSnapshot() {
   const out = {};
   for (const [name, state] of runningProjects.entries()) {
     out[name] = { status: state.status, error: state.error || null, twError: state.twError || null };
   }
-  res.json(out);
+  return out;
+}
+
+app.get("/api/running-projects", (req, res) => {
+  res.json(runsSnapshot());
 });
 
 // Resolves a project name to its folder, refusing anything that would
@@ -1679,13 +2071,15 @@ app.post("/api/open-projects-root", (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Dispatch running on http://localhost:${PORT}`);
 });
+server.on("upgrade", live.handleUpgrade);
 
-// The registry lives in the database, so without it the dashboard can't list
-// projects; the rest (files, git, journal, tasks) still works, so the failure
-// is logged rather than stopping the server.
+// Logins and the registry live in the database, so without it nobody can log
+// in (the login page says so) and the dashboard can't list projects. The API
+// for files, git, journal and tasks still works, and agents post journal
+// entries through it, so the failure is logged rather than stopping the server.
 connectDatabase()
   .then(() => console.log("MongoDB connected"))
   .catch((err) => console.error(`MongoDB connection failed: ${err.message}`));

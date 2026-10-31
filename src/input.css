@@ -1,0 +1,46 @@
+/* Tailwind for the new parts of the page (the shell, Home, Projects, the
+   command palette): npm run tw watches this into public/output.css. The
+   older parts keep their own stylesheet, public/css/dispatch.css, which
+   defines the colors below, so both follow the same light and dark themes.
+
+   Tailwind's preflight reset is left out on purpose: that stylesheet relies
+   on the browser's defaults, which preflight would change under it. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+
+/* Only these hold Tailwind classes; the older scripts don't, and scanning
+   them could turn their own class names into utilities. */
+@source "../views";
+@source "../public/js/app";
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-line: var(--border);
+  --color-fg: var(--text);
+  --color-dim: var(--text-dim);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+  --color-fire: var(--fire-border);
+  --color-fire-bg: var(--fire-bg);
+  --color-breeze: var(--breeze-border);
+  --color-breeze-bg: var(--breeze-bg);
+  --color-cold: var(--cold-border);
+  --color-cold-bg: var(--cold-bg);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+@layer base {
+  /* The one rule from preflight that applies everywhere: a utility like
+     flex mustn't show an element marked hidden. */
+  [hidden]:where(:not([hidden="until-found"])) { display: none !important; }
+
+  /* What preflight would have done, for the new parts only. */
+  .tw-reset :where(h1, h2, h3, h4, p, ul, ol, figure) { margin: 0; }
+  .tw-reset :where(ul, ol) { list-style: none; padding: 0; }
+  .tw-reset :where(button) { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  .tw-reset :where(input, textarea) { font: inherit; color: inherit; }
+  .tw-reset :where(a) { color: inherit; text-decoration: none; }
+}

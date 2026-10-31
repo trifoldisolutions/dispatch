@@ -2,8 +2,8 @@
 ' Opens the projects root (the folder holding every project, Dispatch
 ' included) in VS Code, then opens the Dispatch dashboard in the default
 ' browser. If nothing is answering on port 3000 yet, the server is
-' started first with "npm run dev" in a hidden window, and the browser opens
-' once it responds.
+' started first with "npm run dev" (and Tailwind's "npm run tw") in hidden
+' windows, and the browser opens once it responds.
 
 Option Explicit
 
@@ -42,6 +42,9 @@ If Not IsServing() Then
     ' Window style 0 = hidden; the server keeps running after this script exits.
     shell.CurrentDirectory = projectPath
     shell.Run "cmd /c npm run dev", 0, False
+    ' Tailwind's watcher rebuilds public/output.css as the pages' classes
+    ' change; npm run dev builds it once on its own first.
+    shell.Run "cmd /c npm run tw", 0, False
 
     deadline = DateAdd("s", STARTUP_TIMEOUT_S, Now)
     Do While Not IsServing()
