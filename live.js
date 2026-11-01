@@ -9,10 +9,15 @@ const { WebSocketServer } = require("ws");
 //   { type: "presence", online: [userId, ...] }  who has Dispatch open
 //   { type: "registry" }  projects added, moved or removed: reload them
 //   { type: "tasks" | "journal" | "staff", project }  that project's tasks, journal or staff changed
+//   { type: "people" }  an account was added, changed or removed (accounts.js)
+//   { type: "logged-out" }  this page's login is over: it goes to log in
 //
 // Each page gets ports, runs and presence as soon as it connects. Only logged
-// in users on a Dispatch page (same origin) can connect. The pages fall back
-// to polling while the connection is down (public/js/app/live.js).
+// in users on a Dispatch page (same origin) can connect, and a socket lasts
+// only as long as the login that opened it: a logout (in any of its tabs), a
+// suspended or deleted account, or an expired login closes it, so a page
+// left open doesn't keep its user online. The pages fall back to polling
+// while the connection is down (public/js/app/live.js).
 
 const PORTS_EVERY_MS = 3000; // checking ports costs a connection attempt each, so not every second
 const RUNS_EVERY_MS = 1000; // in-memory, so cheap
@@ -63,6 +68,52 @@ function createLive({ sessions, loadUser, watchedPorts, isPortServing, runsSnaps
     return [...new Set([...sockets].map((ws) => ws.userId))];
   }
 
+  // Who a request's login is: { known, user }. known is false when that
+  // can't be told (the database is down), which isn't the same as no login.
+  function authenticate(req) {
+    const res = { locals: {}, getHeader() {}, setHeader() {}, writeHead() {}, end() {}, on() {} };
+    return new Promise((resolve, reject) => {
+      sessions(req, res, (err) => {
+        if (err) return reject(err);
+        loadUser(req, res, (err) => (err ? reject(err) : resolve({ known: !!req.session, user: req.user })));
+      });
+    });
+  }
+
+  // Tells these pages their login is over and closes their sockets. They
+  // stop counting at once, not when the close completes, and presence is
+  // sent again without them.
+  function endSockets(ended) {
+    if (ended.length === 0) return;
+    for (const ws of ended) {
+      sockets.delete(ws);
+      send(ws, { type: "logged-out" });
+      ws.close(4001, "Logged out");
+    }
+    if (sockets.size === 0) stop();
+    else checkPresence().catch(() => {});
+  }
+
+  // Each login with a socket open, checked again with the cookie it
+  // connected with: one that's over (expired, or its account suspended or
+  // deleted) ends its sockets. When it can't be told, they stay.
+  async function checkLogins() {
+    const bySession = new Map();
+    for (const ws of sockets) {
+      if (!bySession.has(ws.sessionId)) bySession.set(ws.sessionId, []);
+      bySession.get(ws.sessionId).push(ws);
+    }
+    for (const list of bySession.values()) {
+      const { userId, loginHeaders } = list[0];
+      try {
+        const { known, user } = await authenticate({ headers: loginHeaders, url: "/live", method: "GET" });
+        if (known && (!user || String(user._id) !== userId)) endSockets(list.filter((ws) => sockets.has(ws)));
+      } catch {
+        // the next round checks it again
+      }
+    }
+  }
+
   async function checkPresence() {
     const connected = connectedUserIds();
     await touchUsers(connected).catch(() => {});
@@ -82,7 +133,10 @@ function createLive({ sessions, loadUser, watchedPorts, isPortServing, runsSnaps
     timers = [
       every(checkPorts, PORTS_EVERY_MS),
       every(async () => checkRuns(), RUNS_EVERY_MS),
-      every(checkPresence, PRESENCE_EVERY_MS),
+      every(async () => {
+        await checkLogins();
+        await checkPresence();
+      }, PRESENCE_EVERY_MS),
       setInterval(() => {
         for (const ws of sockets) {
           if (!ws.isAlive) {
@@ -124,19 +178,29 @@ function createLive({ sessions, loadUser, watchedPorts, isPortServing, runsSnaps
     } catch {}
     if (originHost !== req.headers.host) return refuse(403, "Forbidden");
 
-    const res = { locals: {}, getHeader() {}, setHeader() {}, writeHead() {}, end() {}, on() {} };
-    sessions(req, res, (err) => {
-      if (err) return refuse(500, "Internal Server Error");
-      loadUser(req, res, (err) => {
-        if (err) return refuse(500, "Internal Server Error");
-        if (!req.user) return refuse(401, "Unauthorized");
-        wss.handleUpgrade(req, socket, head, (ws) => connected(ws, req.user));
-      });
-    });
+    authenticate(req).then(
+      ({ user }) => {
+        if (!user) return refuse(401, "Unauthorized");
+        // ?user= is who the page was drawn for. A page left open while its
+        // browser logged in as someone else would otherwise reconnect as
+        // them; it's told to log in instead, which reloads it as them.
+        const drawnFor = url.searchParams.get("user");
+        if (drawnFor && drawnFor !== String(user._id)) {
+          return wss.handleUpgrade(req, socket, head, (ws) => {
+            send(ws, { type: "logged-out" });
+            ws.close(4001, "Logged out");
+          });
+        }
+        wss.handleUpgrade(req, socket, head, (ws) => connected(ws, user, req));
+      },
+      () => refuse(500, "Internal Server Error")
+    );
   }
 
-  async function connected(ws, user) {
+  async function connected(ws, user, req) {
     ws.userId = String(user._id);
+    ws.sessionId = req.sessionID;
+    ws.loginHeaders = { cookie: req.headers.cookie || "" }; // for checkLogins
     ws.isAlive = true;
     ws.on("pong", () => (ws.isAlive = true));
     ws.on("close", () => {
@@ -169,6 +233,17 @@ function createLive({ sessions, loadUser, watchedPorts, isPortServing, runsSnaps
     },
     projectChanged(project, kind) {
       broadcast({ type: kind, project });
+    },
+    peopleChanged() {
+      broadcast({ type: "people" });
+    },
+    // A logout (auth.js): every page that login has open.
+    loggedOut({ sessionId }) {
+      endSockets([...sockets].filter((ws) => ws.sessionId === sessionId));
+    },
+    // A suspended or deleted account (accounts.js): every page it has open.
+    accountClosed(userId) {
+      endSockets([...sockets].filter((ws) => ws.userId === String(userId)));
     },
     runsChanged() {
       checkRuns();

@@ -23,6 +23,14 @@ function avatarFile(email) {
   return null;
 }
 
+// An account's email changed: its picture is renamed to match, unless the
+// new email already has one.
+function moveAvatar(oldEmail, newEmail) {
+  const file = avatarFile(oldEmail);
+  if (!file || avatarFile(newEmail)) return;
+  fs.renameSync(file, path.join(AVATARS_DIR, newEmail.toLowerCase() + path.extname(file)));
+}
+
 // The picture's address for a user ({ _id, email }), or null with none. Its
 // ?v= changes with the file, so a replaced picture isn't served from cache.
 function avatarUrl(user) {
@@ -54,4 +62,4 @@ avatarRoutes.get("/avatars/:id", async (req, res) => {
   }
 });
 
-module.exports = { avatarUrl, displayName, avatarRoutes, AVATARS_DIR };
+module.exports = { avatarUrl, moveAvatar, displayName, avatarRoutes, AVATARS_DIR };

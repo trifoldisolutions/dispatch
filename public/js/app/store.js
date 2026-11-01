@@ -9,7 +9,12 @@ import * as api from "./api.js";
 
 const legacy = () => window.DispatchLegacy;
 
-export const view = signal("projects"); // "projects" (/ or /projects, on the way to a project) | "project" | "people"
+// An admin's page (views/index.ejs marks it): they oversee the projects
+// without working on them, so Users is their only page. The server decides
+// what they can do; this only shapes the page.
+export const isAdmin = document.body.hasAttribute("data-admin");
+
+export const view = signal("projects"); // "projects" (/ or /projects, on the way to a project) | "project" | "people" | "users"
 export const project = signal(null); // whose page is showing, on "project"
 export const status = signal({ ports: {}, runs: {} }); // port -> listening, name -> { status, error, twError }
 export const newFolders = signal([]);
@@ -17,6 +22,7 @@ export const myProjects = signal({ loaded: false, error: null, list: [] });
 export const myTasks = signal({ loaded: false, error: null, data: null }); // data: { today, tasks } (GET /api/me/tasks)
 export const people = signal({ loaded: false, error: null, data: null }); // data: { people, leading, seesClients } (GET /api/me/people)
 export const online = signal(null); // /live's presence: a Set of user ids, null until it first arrives
+export const accountsChanged = signal(0); // counts /live's "people": the Users page reloads on it
 export const busy = signal({}); // name -> true while a start/stop it asked for is in flight
 
 // The side column beside project pages and /projects, under the Add project
@@ -129,7 +135,7 @@ export const runningProjects = computed(() =>
 
 // ---- Actions ---------------------------------------------------------------
 
-function toast(kind, message) {
+export function toast(kind, message) {
   if (legacy()) legacy().setStatus(kind, message);
 }
 
@@ -202,6 +208,11 @@ export async function addToProject(person, projectName) {
 
 export function confirm(message) {
   return legacy().confirm(message);
+}
+
+// A confirm whose Delete only enables once `value` is typed.
+export function confirmByTyping(message, value) {
+  return legacy().prompt(message, value);
 }
 
 export function navigate(path, options) {

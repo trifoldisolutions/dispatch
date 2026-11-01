@@ -146,13 +146,31 @@ async function signIn(req, user) {
   await run((cb) => req.session.save(cb));
 }
 
-// Logging out ends being online at once, not ONLINE_MS later. Another
-// browser of theirs that's still logged in is seen again with its next
-// request.
+// Told of each logout once it's done, with { sessionId, userId }: /live
+// (live.js) closes the sockets that login opened in any tab, which would
+// otherwise keep their user online.
+const logoutListeners = [];
+function onLogout(listener) {
+  logoutListeners.push(listener);
+}
+
+// Logging out ends being online at once, not ONLINE_MS later: they're last
+// seen just far enough back not to count. Another browser of theirs that's
+// still logged in is seen again with its next request.
 async function signOut(req, res) {
-  if (req.user) await User.updateOne({ _id: req.user._id }, { $set: { lastSeenAt: null } });
+  const login = req.user && req.session ? { sessionId: req.sessionID, userId: String(req.user._id) } : null;
+  if (req.user) await User.updateOne({ _id: req.user._id }, { $set: { lastSeenAt: new Date(Date.now() - ONLINE_MS) } });
   if (req.session) await run((cb) => req.session.destroy(cb));
   res.clearCookie(SESSION_COOKIE, COOKIE_OPTIONS);
+  if (login) {
+    for (const listener of logoutListeners) {
+      try {
+        listener(login);
+      } catch {
+        // the logout itself is done
+      }
+    }
+  }
 }
 
 function hostOf(url) {
@@ -223,4 +241,18 @@ authRoutes.post("/logout", sameOrigin, async (req, res, next) => {
   }
 });
 
-module.exports = { sessions, loadUser, requireLogin, isOnline, recentlySeenUserIds, touchUsers, authRoutes };
+module.exports = {
+  sessions,
+  loadUser,
+  requireLogin,
+  isOnline,
+  recentlySeenUserIds,
+  touchUsers,
+  authRoutes,
+  onLogout,
+  // For the password links' page (accounts.js), which logs people in too.
+  signIn,
+  sameOrigin,
+  PASSWORD_MAX_LENGTH,
+  UNAVAILABLE,
+};

@@ -10,7 +10,7 @@ import { useState, useEffect, useRef } from "preact/hooks";
 import { html } from "./html.js";
 import * as store from "./store.js";
 import * as api from "./api.js";
-import { Icon, dueLabel, projectPath } from "./ui.js";
+import { Icon, Avatar, seenText, dueLabel, projectPath } from "./ui.js";
 
 const TASKS_SHOWN = 5; // then Show more, TASKS_MORE at a time
 const TASKS_MORE = 10;
@@ -36,7 +36,8 @@ function SidePanel({ title, href, meta, class: cls, children }) {
 }
 
 // Like the older panels' empty state (buildPanelEmpty in public/js/legacy/ui.js).
-function SideEmpty({ icon, title, text, error = false }) {
+// The Users page's panel uses it and SideLoading too.
+export function SideEmpty({ icon, title, text, error = false }) {
   return html`<div class=${"panel-empty" + (error ? " error" : "")}>
     <span class="panel-empty-icon"><${Icon} name=${icon} /></span>
     <p class="panel-empty-title">${title}</p>
@@ -44,7 +45,7 @@ function SideEmpty({ icon, title, text, error = false }) {
   </div>`;
 }
 
-function SideLoading() {
+export function SideLoading() {
   return html`<div class="flex items-center justify-center gap-2 px-4 py-6 text-[13px] text-dim"><${Icon} name="spinner" /> Loading…</div>`;
 }
 
@@ -169,18 +170,6 @@ function RoleFilter({ value, onChange, seesClients }) {
   </div>`;
 }
 
-// "Seen 5 min ago", "Seen 3 h ago", "Seen 2 days ago", else the date.
-function seenText(lastSeenAt) {
-  if (!lastSeenAt) return "Not seen yet";
-  const minutes = Math.max(1, Math.round((Date.now() - new Date(lastSeenAt)) / 60000));
-  if (minutes < 60) return `Seen ${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `Seen ${hours} h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 7) return `Seen ${days} day${days === 1 ? "" : "s"} ago`;
-  return `Seen ${new Date(lastSeenAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
-}
-
 // The projects you share with them by name (two, then a count), and how
 // many others they're on without naming those, which you can't see.
 function projectsText(person) {
@@ -189,16 +178,6 @@ function projectsText(person) {
   if (shared.length === 0) return projects ? `${projects} project${projects === 1 ? "" : "s"}, none of yours` : "No projects yet";
   const named = shared.slice(0, 2).join(", ") + (shared.length > 2 ? ` +${shared.length - 2}` : "");
   return others > 0 ? `${named} · ${others} other${others === 1 ? "" : "s"}` : named;
-}
-
-function Avatar({ person, online }) {
-  return html`<span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-line text-dim">
-    ${person.avatar
-      ? html`<img src=${person.avatar} alt="" class="h-full w-full rounded-full object-cover" />`
-      : html`<${Icon} name="user" size=${20} />`}
-    <span title=${online ? "Online" : "Offline"}
-      class=${"absolute -bottom-px -right-px h-3 w-3 rounded-full border-2 border-panel " + (online ? "bg-ok" : "bg-line")}></span>
-  </span>`;
 }
 
 const SMALL_BUTTON =
@@ -314,7 +293,7 @@ function PersonRow({ person, leading, class: cls = "" }) {
         <button type="button" disabled class=${SMALL_BUTTON} title="Chat is coming soon">
           <${Icon} name="message" size=${13} /> Message
         </button>
-        ${leading.length > 0 && person.role !== "client" && html`<${AddToProject} person=${person} leading=${leading} />`}
+        ${leading.length > 0 && person.role !== "client" && person.role !== "admin" && html`<${AddToProject} person=${person} leading=${leading} />`}
       </div>
     </div>
   </li>`;

@@ -1,6 +1,6 @@
-// Small pieces the project list, the side column and the palette share:
-// icons, the live dot, a project's category badge, panels, buttons, a
-// dropdown and date wording.
+// Small pieces the project list, the side column, the palette and the Users
+// page share: icons, the live dot, a project's category badge, avatars,
+// panels, buttons, a dropdown and date wording.
 import { useState, useEffect, useRef } from "preact/hooks";
 import { html } from "./html.js";
 
@@ -30,6 +30,15 @@ const paths = {
   alert: html`<path d="M12 8.5V13m0 3.5v.01M10.3 4.6 3.2 17a2 2 0 0 0 1.7 3h14.2a2 2 0 0 0 1.7-3L13.7 4.6a2 2 0 0 0-3.4 0z" />`,
   spinner: html`<path d="M12 3a9 9 0 1 0 9 9" class="origin-center animate-spin" />`,
   sliders: html`<path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" />`,
+  more: html`<path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3" />`,
+  pencil: html`<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16zM13.5 6.5l4 4" />`,
+  link: html`<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />`,
+  copy: html`<rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />`,
+  pause: html`<circle cx="12" cy="12" r="8.5" /><path d="M10 9v6M14 9v6" />`,
+  restore: html`<path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4" />`,
+  trash: html`<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />`,
+  shield: html`<path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z" />`,
+  close: html`<path d="M6 6l12 12M18 6L6 18" />`,
 };
 
 export function Icon({ name, size = 16, class: cls = "" }) {
@@ -59,6 +68,31 @@ export function CategoryBadge({ project }) {
 }
 
 export const ROLE_LABELS = { lead: "Lead", dev: "Developer", client: "Client", admin: "Admin" };
+
+// A person's picture, or the user icon without one, and a dot for whether
+// they're online (null: no dot, for an account that can't be).
+export function Avatar({ person, online }) {
+  return html`<span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-line text-dim">
+    ${person.avatar
+      ? html`<img src=${person.avatar} alt="" class="h-full w-full rounded-full object-cover" />`
+      : html`<${Icon} name="user" size=${20} />`}
+    ${online !== null &&
+    html`<span title=${online ? "Online" : "Offline"}
+      class=${"absolute -bottom-px -right-px h-3 w-3 rounded-full border-2 border-panel " + (online ? "bg-ok" : "bg-line")}></span>`}
+  </span>`;
+}
+
+// "Seen 5 min ago", "Seen 3 h ago", "Seen 2 days ago", else the date.
+export function seenText(lastSeenAt) {
+  if (!lastSeenAt) return "Not seen yet";
+  const minutes = Math.max(1, Math.round((Date.now() - new Date(lastSeenAt)) / 60000));
+  if (minutes < 60) return `Seen ${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `Seen ${hours} h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `Seen ${days} day${days === 1 ? "" : "s"} ago`;
+  return `Seen ${new Date(lastSeenAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+}
 
 export function Panel({ title, icon, meta, children, class: cls = "" }) {
   return html`<section class=${"rounded-lg border border-line bg-panel " + cls}>

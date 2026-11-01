@@ -704,10 +704,12 @@ body {
   margin: 0 auto;
   padding: var(--toolbar-height) 32px 16px;
 }
-/* The People page (PeoplePage in public/js/app/side.js): one panel the
-   window's height, its top 11px down like the side column's, and the page's
-   own 32px on both sides, since no project list sits beside it. */
-.people-page {
+/* The People page (PeoplePage in public/js/app/side.js) and an admin's
+   Users (public/js/app/users.js): one panel the window's height, its top
+   11px down like the side column's, and the page's own 32px on both sides,
+   since no project list sits beside it. */
+.people-page,
+.users-page {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -715,10 +717,12 @@ body {
   margin: 0 auto;
   padding: 11px 32px 16px;
 }
-.people-page > .project-panel { flex: 1; }
+.people-page > .project-panel,
+.users-page > .project-panel { flex: 1; }
 @container content (max-width: 900px) {
   .projects-empty,
-  .people-page { padding-inline: 16px; }
+  .people-page,
+  .users-page { padding-inline: 16px; }
 }
 .project-header {
   position: relative;

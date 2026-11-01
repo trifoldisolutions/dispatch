@@ -10,7 +10,7 @@ function render() {
 
   const onProjectPage = currentView === "project";
   projectViewEl.hidden = !onProjectPage;
-  appViewEl.hidden = onProjectPage; // / and /projects while they find your project, and /people: drawn by public/js/app
+  appViewEl.hidden = onProjectPage; // / and /projects while they find your project, /people and /users: drawn by public/js/app
   // The toolbar (the project list's button under 1280px and the back link)
   // only applies to project pages.
   toolbarEl.hidden = !onProjectPage;
@@ -54,9 +54,9 @@ function render() {
   document.dispatchEvent(new CustomEvent("dispatch:render", { detail: { view: currentView, project: currentProjectName } }));
 }
 
-const VIEW_TITLES = { projects: "Projects", people: "People" };
+const VIEW_TITLES = { projects: "Projects", people: "People", users: "Users" };
 
-// / and /projects, and /people, draw themselves (public/js/app); the project page is
+// / and /projects, /people and /users draw themselves (public/js/app); the project page is
 // emptied meanwhile, so its hidden header doesn't answer lookups and is
 // rebuilt fresh when a project opens again.
 function clearProjectView() {
@@ -72,7 +72,8 @@ function clearProjectView() {
 // /projects (old links, or the left menu before the list has loaded) your
 // first, each replacing itself in the history (see public/js/app/projects.js),
 // so both are the "projects" view here. /people is everyone you work with
-// (public/js/app/side.js). Pages are keyed by folder name,
+// (public/js/app/side.js), and /users, an admin's, everyone's accounts
+// (public/js/app/users.js). Pages are keyed by folder name,
 // not port — the name stays put while a project is switched to another port
 // or category or (un)assigned, so its pages survive all of those. The server
 // answers all of these addresses with this same file (and keeps project
@@ -82,13 +83,19 @@ function projectPath(name, section = null) {
   return "/" + encodeURIComponent(name) + (section ? `/${section}` : "");
 }
 
-const APP_VIEWS = ["projects", "people"];
+const APP_VIEWS = ["projects", "people", "users"];
+
+// An admin oversees the projects without working on them: Users is their
+// only page, whatever the address (the server sends them there on a full
+// load too; this covers Back to an address from before).
+const ADMIN_PAGE = document.body.hasAttribute("data-admin");
 
 // { view, project, section } for an address: a null project on the app's
 // own pages, and a null section on a project's own page. Anything past the
 // section is kept on it, so a mistyped address shows as a section that
 // doesn't exist.
 function routeFromPath(pathname) {
+  if (ADMIN_PAGE) return { view: "users", project: null, section: null };
   const landing = { view: "projects", project: null, section: null };
   const [encoded, ...rest] = pathname.replace(/^\/+|\/+$/g, "").split("/");
   if (!encoded) return landing;
@@ -109,6 +116,7 @@ function findProjectSection(slug) {
 // replace: true swaps the current history entry instead of adding one, for
 // an address that only stands for another (/projects).
 function navigate(path, { replace = false } = {}) {
+  if (ADMIN_PAGE) path = "/users";
   if (path !== location.pathname) history[replace ? "replaceState" : "pushState"](null, "", path);
   applyRoute();
 }
@@ -116,6 +124,7 @@ function navigate(path, { replace = false } = {}) {
 // Brings the page in line with the address bar — after navigate(), or the
 // browser's back/forward — and renders whichever page that now is.
 function applyRoute() {
+  if (ADMIN_PAGE && location.pathname !== "/users") history.replaceState(null, "", "/users");
   const next = routeFromPath(location.pathname);
   if (next.view === currentView && next.project === currentProjectName) {
     // Between a project's page and its sections' pages the panels' filters

@@ -18,22 +18,35 @@
 }
 </script>
 </head>
-<body>
-<%# The left menu: Projects, places kept for Inbox and Chat, then
-    Dispatch's own page and the account (the command palette has no place
-    here: Ctrl+K opens it, see public/js/app/palette.js). Under
-    640px it's a bar along the bottom instead. render()
-    (public/js/legacy/router.js) marks the current page with aria-current. %>
+<%# data-admin: an admin oversees the projects without working on them, so
+    Users is their only page (public/js/app/store.js and
+    public/js/legacy/router.js read it; the server checks for itself).
+    data-user: whose page this is, which /live checks it against
+    (public/js/app/live.js). %>
+<body data-user="<%= user._id %>"<%- user.isAdmin ? " data-admin" : "" %>>
+<%# The left menu: Projects, places kept for Inbox and Chat, then Dispatch's
+    own page and the account; an admin's has Users and no Dispatch (the
+    command palette has no place here: Ctrl+K opens it, see
+    public/js/app/palette.js). Under 640px it's a bar along the bottom
+    instead. render() (public/js/legacy/router.js) marks the current page
+    with aria-current. %>
 <nav id="rail" class="tw-reset fixed z-30 flex bg-panel border-line
   max-sm:inset-x-0 max-sm:bottom-0 max-sm:h-14 max-sm:flex-row max-sm:items-center max-sm:justify-around max-sm:border-t
   sm:inset-y-0 sm:left-0 sm:w-[72px] sm:flex-col sm:items-center sm:gap-1 sm:border-r sm:py-3" aria-label="Dispatch">
   <a href="/" data-route class="max-sm:hidden mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-[15px] font-bold text-white" title="Dispatch">D</a>
   <% const railItem = "flex w-14 flex-col items-center gap-1 rounded-lg py-2 text-[11px] font-medium text-dim hover:bg-line/50 hover:text-fg aria-[current=page]:bg-accent/15 aria-[current=page]:text-fg"; %>
   <% const railSoon = "flex w-14 flex-col items-center gap-1 rounded-lg py-2 text-[11px] font-medium text-dim opacity-45 cursor-default max-sm:hidden"; %>
+  <% if (user.isAdmin) { %>
+  <a href="/users" data-route data-rail="users" class="<%= railItem %>" title="Everyone's accounts">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 19c.5-3 3-5 6-5s5.5 2 6 5M16 4.5a3.5 3.5 0 0 1 0 7M18 14c1.7.6 2.8 2.4 3 5"/></svg>
+    Users
+  </a>
+  <% } else { %>
   <a href="/projects" data-route data-rail="projects" class="<%= railItem %>">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>
     Projects
   </a>
+  <% } %>
   <span class="<%= railSoon %>" title="Shared mailboxes: coming soon">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13.5V18a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4.5M4 13.5 6.5 5h11l2.5 8.5M4 13.5h4.5l1.5 2.5h4l1.5-2.5H20"/></svg>
     Inbox
@@ -43,10 +56,12 @@
     Chat
   </span>
   <span class="max-sm:hidden flex-1"></span>
+  <% if (!user.isAdmin) { %>
   <a href="/dispatch" data-route data-rail="self" class="<%= railItem %>" title="Dispatch's own page: its files, tasks, journal and history">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
     Dispatch
   </a>
+  <% } %>
   <%# The account: its avatar opens a popup (a popover, so a click beside it
       or Escape closes it) with the name, email and Log out. main.js places
       it beside the avatar, or above it on the phone's bottom bar. %>
@@ -116,7 +131,7 @@
 <div id="project-view" class="project-view" hidden></div>
 
 <%# / and /projects while they find your project (or when there's none to
-    show), and /people: drawn by public/js/app (Preact). %>
+    show), /people, and an admin's /users: drawn by public/js/app (Preact). %>
 <div id="app-view" class="tw-reset" hidden></div>
 </div>
 <aside id="create-side" class="create-side" aria-label="Add project, your tasks and people" hidden>

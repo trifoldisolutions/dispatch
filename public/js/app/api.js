@@ -29,3 +29,11 @@ export const stopProject = (name) => request("POST", `/api/projects/${project(na
 export const openInVSCode = (name) => request("POST", `/api/projects/${project(name)}/open-vscode`);
 export const patchTask = (name, id, changes) =>
   request("PATCH", `/api/project-folders/${project(name)}/tasks/${encodeURIComponent(id)}`, changes);
+
+// Admins only (accounts.js beside server.js).
+const account = (id) => `/api/admin/users/${encodeURIComponent(id)}`;
+export const getAccounts = () => request("GET", "/api/admin/users");
+export const createAccount = (fields) => request("POST", "/api/admin/users", fields);
+export const updateAccount = (id, changes) => request("PATCH", account(id), changes);
+export const newPasswordLink = (id) => request("POST", `${account(id)}/password-link`);
+export const deleteAccount = (id) => request("DELETE", account(id));

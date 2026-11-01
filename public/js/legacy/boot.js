@@ -175,6 +175,7 @@ window.DispatchLegacy = {
   liveStatus: () => ({ ports: { ...portLiveStatus }, runs: { ...projectRunStatus } }),
   setStatus,
   confirm: customConfirm,
+  prompt: customPrompt, // a confirm that takes typing a value, for deleting
   // Run state, after a start or stop made outside the project page's own button.
   refreshStatus() {
     refreshProjectRunStatus();

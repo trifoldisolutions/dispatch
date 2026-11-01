@@ -8,9 +8,10 @@ const { spawn, exec } = require("child_process");
 const { promisify } = require("util");
 const helmet = require("helmet");
 const { connectDatabase } = require("./db");
-const { sessions, loadUser, requireLogin, isOnline, recentlySeenUserIds, touchUsers, authRoutes } = require("./auth");
+const { sessions, loadUser, requireLogin, isOnline, recentlySeenUserIds, touchUsers, authRoutes, onLogout } = require("./auth");
 const { createLive } = require("./live");
 const { avatarUrl, displayName, avatarRoutes } = require("./people");
+const { createAccountRoutes } = require("./accounts");
 const Project = require("./models/Project");
 const Membership = require("./models/Membership");
 const User = require("./models/User");
@@ -23,7 +24,12 @@ const SELF_PROJECT = path.basename(__dirname); // Dispatch's own project: in the
 // path segments Dispatch answers on. A project folder can't take one of these
 // names, or its page would be unreachable.
 const APP_PAGES = ["projects", "people"];
-const RESERVED_NAMES = new Set([...APP_PAGES, "ports", "inbox", "chat", "login", "logout", "api", "css", "js", "vendor", "live", "avatars"]);
+const ADMIN_PAGES = ["users"]; // only admins get these; anyone else is sent to /
+const RESERVED_NAMES = new Set([
+  ...APP_PAGES,
+  ...ADMIN_PAGES,
+  "ports", "inbox", "chat", "login", "logout", "password", "api", "css", "js", "vendor", "live", "avatars",
+]);
 const CATEGORIES = ["fire", "breeze", "cold"];
 const CATEGORY_LIMITS = { fire: 2, breeze: 4 }; // cold is unlimited
 const PROJECT_DESCRIPTION_MAX_LENGTH = 230; // mirrors the create form's description maxlength in views/index.ejs
@@ -87,6 +93,7 @@ const live = createLive({
   onlineUserIds: recentlySeenUserIds,
   touchUsers,
 });
+onLogout((login) => live.loggedOut(login));
 
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
@@ -137,6 +144,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false })); // the login form
 app.use(sessions, loadUser);
 app.use(authRoutes);
+app.use(createAccountRoutes({ live }));
 app.use(avatarRoutes);
 // The left menu's account button shows the user's picture when there is one.
 app.locals.avatarUrl = avatarUrl;
@@ -144,8 +152,17 @@ app.locals.avatarUrl = avatarUrl;
 // / opens the last project you had open, and /projects your first (old
 // links, or the left menu before the page has your list), once the page has
 // it. Like the project pages below, they're the same page: index.ejs reads
-// the path and shows that one.
+// the path and shows that one. An admin's only page is Users: they oversee
+// the projects without working on them, so these and every project page send
+// them there.
 app.get(["/", ...APP_PAGES.map((page) => `/${page}`)], requireLogin, (req, res) => {
+  if (req.user.isAdmin) return res.redirect("/users");
+  res.render("index");
+});
+
+// Admins' pages: /users, everyone's accounts (public/js/app/users.js).
+app.get(ADMIN_PAGES.map((page) => `/${page}`), requireLogin, (req, res) => {
+  if (!req.user.isAdmin) return res.redirect("/");
   res.render("index");
 });
 
@@ -160,8 +177,10 @@ app.get("/ports", (req, res) => res.redirect("/projects"));
 // (favicon.ico) falls through to a plain 404. The login check comes first,
 // so a logged-out visitor can't tell project names from typos.
 function serveProjectPage(req, res, next) {
-  if (listProjectFolders().includes(req.params.name)) return res.render("index");
-  if (req.params.name.includes(".")) return next();
+  const exists = listProjectFolders().includes(req.params.name);
+  if (!exists && req.params.name.includes(".")) return next();
+  if (req.user.isAdmin) return res.redirect("/users");
+  if (exists) return res.render("index");
   res.status(404).render("index");
 }
 
@@ -463,7 +482,7 @@ async function projectClients(projectId, viewer) {
 
 // ---- The logged-in user's own views (the project list, the side column) ---
 // These need a login and only ever show the user's own projects: those they
-// hold a membership on, or every project for an admin. Agents don't use them,
+// hold a membership on, and none for an admin. Agents don't use them,
 // so unlike the rest of the API they can check permissions already.
 
 const ACTIVITY_DAYS = 14;
@@ -479,18 +498,15 @@ function requireApiLogin(req, res, next) {
   next();
 }
 
-// [{ project (lean), role }] for the user: "admin" where an admin has no
-// membership of their own. Dispatch's own project is in the database too.
+// [{ project (lean), role }] for the user: the projects they hold a
+// membership on (Dispatch's own is in the database too). None for an admin,
+// who oversees the projects rather than working on any, Dispatch's included.
 async function projectsForUser(user) {
+  if (user.isAdmin) return [];
   const memberships = await Membership.find({ user: user._id }).populate("project").lean();
   const byName = new Map();
   for (const { project, role } of memberships) {
     if (project) byName.set(project.name, { project, role });
-  }
-  if (user.isAdmin) {
-    for (const project of await Project.find().lean()) {
-      if (!byName.has(project.name)) byName.set(project.name, { project, role: "admin" });
-    }
   }
   return [...byName.values()].sort((a, b) => a.project.name.localeCompare(b.project.name));
 }
@@ -686,7 +702,8 @@ const PEOPLE_ROLES = ["lead", "dev", "client"]; // what People's role filter (?r
 // "dev" for the rest of the staff (projects or not), "admin" for an admin on
 // none, or "client". shared names only the projects the user is on too; the
 // rest are just counted in projects (theirs, staff or client ones). addTo is
-// the user's own projects they could be added to, never any for a client.
+// the user's own projects they could be added to, never any for a client or
+// an admin.
 // `leading` lists the projects the user leads that aren't finished, where
 // Add to project can put someone: empty for anyone who isn't a lead, who
 // then doesn't get the button. `seesClients` says whether the role filter
@@ -744,7 +761,7 @@ app.get("/api/me/people", requireApiLogin, async (req, res) => {
           role: kind,
           shared: shared.map(({ project }) => projectNames.get(project)).filter(Boolean).sort(),
           projects: theirs.length,
-          addTo: isClient ? [] : leading.filter((project) => !onProject.has(String(project._id))).map((project) => project.name),
+          addTo: isClient || user.isAdmin ? [] : leading.filter((project) => !onProject.has(String(project._id))).map((project) => project.name),
         },
         // A search ranks names that start with what was typed first.
         prefix: q ? name.startsWith(q) || name.split(/\s+/).some((word) => word.startsWith(q)) : false,
@@ -772,7 +789,8 @@ app.get("/api/me/people", requireApiLogin, async (req, res) => {
 // People's Add to project: a lead brings someone onto one of their projects
 // as a developer. Only that project's leads can, and only while it isn't
 // finished. The person must be staff with no role on it yet: a membership is
-// one role per person per project, and a client can't be made a developer.
+// one role per person per project, a client can't be made a developer, and
+// an admin oversees projects without joining them.
 app.post("/api/projects/:name/staff", requireApiLogin, async (req, res) => {
   try {
     const project = await Project.findOne({ name: req.params.name }, { name: 1, status: 1 }).lean();
@@ -782,8 +800,9 @@ app.post("/api/projects/:name/staff", requireApiLogin, async (req, res) => {
     }
     if (project.status === "finished") return res.status(400).json({ error: `${project.name} is finished` });
     const userId = String((req.body && req.body.userId) || "");
-    const user = /^[a-f0-9]{24}$/i.test(userId) ? await User.findOne({ _id: userId, status: "active" }, { name: 1 }).lean() : null;
+    const user = /^[a-f0-9]{24}$/i.test(userId) ? await User.findOne({ _id: userId, status: "active" }, { name: 1, isAdmin: 1 }).lean() : null;
     if (!user) return res.status(404).json({ error: "no active account with that id" });
+    if (user.isAdmin) return res.status(400).json({ error: `${user.name} is an admin: admins oversee projects rather than join them` });
     const own = await Membership.find({ user: user._id }, { project: 1, role: 1 }).lean();
     if (own.some((membership) => String(membership.project) === String(project._id))) {
       return res.status(409).json({ error: `${displayName(user.name)} is already on ${project.name}` });

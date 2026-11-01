@@ -1,5 +1,5 @@
 // The newer parts of the page, in Preact: / and /projects on their way to a
-// project, and /people (in #app-view), the project list beside project pages (in
+// project, /people and an admin's /users (in #app-view), the project list beside project pages (in
 // #project-list-root), the side column's tasks and people under the Add
 // project form (in #side-root) and the command palette (in #palette-root).
 // They load after the older scripts in public/js/legacy and talk to them
@@ -11,11 +11,13 @@ import * as store from "./store.js";
 import { ProjectList, ProjectsPage, listOpen, firstProjectPath } from "./projects.js";
 import { Side, PeoplePage } from "./side.js";
 import { Palette } from "./palette.js";
+import { UsersPage } from "./users.js";
 import "./live.js";
 
 function App() {
   if (store.view.value === "projects") return html`<${ProjectsPage} />`;
   if (store.view.value === "people") return html`<${PeoplePage} />`;
+  if (store.view.value === "users" && store.isAdmin) return html`<${UsersPage} />`;
   return null;
 }
 
@@ -27,9 +29,10 @@ render(html`<${Palette} />`, document.getElementById("palette-root"));
 document.getElementById("project-list-btn").addEventListener("click", () => (listOpen.value = true));
 
 // The left menu's Projects leads straight to the first project in the list;
-// /projects stands in until the list has loaded.
+// /projects stands in until the list has loaded. An admin's menu has Users
+// in its place.
 const railProjects = document.querySelector('#rail [data-rail="projects"]');
-effect(() => railProjects.setAttribute("href", firstProjectPath.value || "/projects"));
+if (railProjects) effect(() => railProjects.setAttribute("href", firstProjectPath.value || "/projects"));
 
 // The account popup (views/index.ejs) opens 8px beside the left menu, its
 // foot level with the avatar's; on the phone's bottom bar, 8px above the

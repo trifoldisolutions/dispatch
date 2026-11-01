@@ -24,6 +24,7 @@ const SECTIONS = [
 function paletteProjects() {
   const mine = store.myProjects.value;
   if (mine.loaded && !mine.error) return mine.list.filter((p) => p.hasFolder);
+  if (store.isAdmin) return []; // an admin has none
   const { entries, unassigned } = window.DispatchLegacy.registry();
   return [
     ...entries.map((e) => ({ name: e.name, port: Number(e.port), category: e.category })),
@@ -31,13 +32,16 @@ function paletteProjects() {
   ];
 }
 
+// An admin's one page is Users: they oversee the projects without working on them.
 function commands() {
   const go = (path) => () => store.navigate(path);
-  const list = [
-    { id: "projects", label: "Projects", hint: "Your first project", icon: "grid", run: () => store.navigate(firstProjectPath.value || "/projects") },
-    { id: "self", label: "Dispatch", hint: "Dispatch's own page", icon: "sliders", run: go("/dispatch") },
-    { id: "new", label: "New project", hint: "Action", icon: "plus", run: () => window.DispatchLegacy.openCreateDrawer() },
-  ];
+  const list = store.isAdmin
+    ? [{ id: "users", label: "Users", hint: "Everyone's accounts", icon: "users", run: go("/users") }]
+    : [
+        { id: "projects", label: "Projects", hint: "Your first project", icon: "grid", run: () => store.navigate(firstProjectPath.value || "/projects") },
+        { id: "self", label: "Dispatch", hint: "Dispatch's own page", icon: "sliders", run: go("/dispatch") },
+        { id: "new", label: "New project", hint: "Action", icon: "plus", run: () => window.DispatchLegacy.openCreateDrawer() },
+      ];
   const status = store.status.value;
   for (const p of paletteProjects()) {
     const state = store.runState(p, status);
