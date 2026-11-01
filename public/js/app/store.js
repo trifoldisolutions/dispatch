@@ -1,5 +1,5 @@
-// State shared by Home, the project list and the palette, as signals:
-// components that read one redraw when it changes.
+// State shared by the project list, the side column (Your tasks, People) and
+// the palette, as signals: components that read one redraw when it changes.
 //
 // The older scripts (public/js/legacy) still own the registry and the
 // listening/running state; they announce changes with the "dispatch:render"
@@ -9,17 +9,31 @@ import * as api from "./api.js";
 
 const legacy = () => window.DispatchLegacy;
 
-export const view = signal("home"); // "home" | "projects" | "project"
+export const view = signal("projects"); // "projects" (/ or /projects, on the way to a project) | "project" | "people"
 export const project = signal(null); // whose page is showing, on "project"
 export const status = signal({ ports: {}, runs: {} }); // port -> listening, name -> { status, error, twError }
 export const newFolders = signal([]);
 export const myProjects = signal({ loaded: false, error: null, list: [] });
-export const home = signal({ loaded: false, error: null, data: null });
+export const myTasks = signal({ loaded: false, error: null, data: null }); // data: { today, tasks } (GET /api/me/tasks)
+export const people = signal({ loaded: false, error: null, data: null }); // data: { people, leading, seesClients } (GET /api/me/people)
+export const online = signal(null); // /live's presence: a Set of user ids, null until it first arrives
 export const busy = signal({}); // name -> true while a start/stop it asked for is in flight
+
+// The side column beside project pages and /projects, under the Add project
+// form, from the same window width as that form's (SIDE_FORM_QUERY in
+// public/js/legacy/project-form.js). Narrower, there's no room for it.
+const SIDE_QUERY = window.matchMedia("(min-width: 2072px)");
+const wideEnough = signal(SIDE_QUERY.matches);
+export const sideShown = computed(() => wideEnough.value && (view.value === "project" || view.value === "projects"));
+SIDE_QUERY.addEventListener("change", (e) => {
+  wideEnough.value = e.matches;
+  loadStale();
+});
 
 const STALE_MS = 30 * 1000; // how long a page's data counts as fresh when you come back to it
 let projectsLoadedAt = 0;
-let homeLoadedAt = 0;
+let tasksLoadedAt = 0;
+let peopleLoadedAt = 0;
 
 export async function loadProjects() {
   projectsLoadedAt = Date.now();
@@ -31,30 +45,43 @@ export async function loadProjects() {
   }
 }
 
-export async function loadHome() {
-  homeLoadedAt = Date.now();
+export async function loadTasks() {
+  tasksLoadedAt = Date.now();
   try {
-    home.value = { loaded: true, error: null, data: await api.getHome() };
+    myTasks.value = { loaded: true, error: null, data: await api.getMyTasks() };
   } catch (err) {
-    home.value = { ...home.value, loaded: true, error: err.message };
+    myTasks.value = { ...myTasks.value, loaded: true, error: err.message };
   }
 }
 
-// Fetches what the page now showing needs, unless it's still fresh. Every
-// page needs the project list: Home's, the list beside project pages, and the
-// left menu's Projects, which links to the first of them.
-function loadForView(name) {
+export async function loadPeople() {
+  peopleLoadedAt = Date.now();
+  try {
+    people.value = { loaded: true, error: null, data: await api.getPeople() };
+  } catch (err) {
+    people.value = { ...people.value, loaded: true, error: err.message };
+  }
+}
+
+// Fetches what's showing needs, unless it's still fresh. Every page needs the
+// project list: the list beside project pages, and the left menu's Projects,
+// which links to the first of them. The side column's tasks only load while
+// it shows, and people while it or the People page does (the page fetches
+// its own list, everyone, again whenever these reload).
+function loadStale() {
   const now = Date.now();
   if (now - projectsLoadedAt > STALE_MS) loadProjects();
-  if (name === "home" && now - homeLoadedAt > STALE_MS) loadHome();
+  if (sideShown.value && now - tasksLoadedAt > STALE_MS) loadTasks();
+  if ((sideShown.value || view.value === "people") && now - peopleLoadedAt > STALE_MS) loadPeople();
 }
 
 // Something changed on the server (/live says what): refetch what depends on
 // it now if it's showing, or next time it is.
-export function invalidate({ projects = false, home: homeToo = false } = {}) {
+export function invalidate({ projects = false, tasks = false, people: peopleToo = false } = {}) {
   if (projects) projectsLoadedAt = 0;
-  if (homeToo) homeLoadedAt = 0;
-  loadForView(view.value);
+  if (tasks) tasksLoadedAt = 0;
+  if (peopleToo) peopleLoadedAt = 0;
+  loadStale();
 }
 
 document.addEventListener("dispatch:render", (e) => {
@@ -62,7 +89,7 @@ document.addEventListener("dispatch:render", (e) => {
   project.value = e.detail.project;
   if (next !== view.value) {
     view.value = next;
-    loadForView(next);
+    loadStale();
   }
   if (legacy()) newFolders.value = legacy().newFolders();
 });
@@ -71,12 +98,15 @@ document.addEventListener("dispatch:status", (e) => {
   status.value = e.detail;
 });
 
-// /live's presence: Home's People dots follow it.
+// /live's presence: People's dots follow it.
 export function setOnline(ids) {
-  const { data } = home.value;
-  if (!data) return;
-  const online = new Set(ids);
-  home.value = { ...home.value, data: { ...data, people: data.people.map((p) => ({ ...p, online: online.has(p.id) })) } };
+  online.value = new Set(ids);
+}
+
+// Whether someone has Dispatch open: /live's word once it has spoken, the
+// server's at load time until then.
+export function isOnline(person) {
+  return online.value ? online.value.has(person.id) : person.online;
 }
 
 // ---- Derived state -------------------------------------------------------
@@ -143,7 +173,7 @@ export async function openInVSCode(name) {
   }
 }
 
-// Ticks a task done from Home, then refetches Home and the counts.
+// Ticks a task done from Your tasks, then refetches them and the counts.
 export async function completeTask(task) {
   try {
     await api.patchTask(task.project, task.id, { done: true });
@@ -152,7 +182,26 @@ export async function completeTask(task) {
   } catch (err) {
     toast("error", err.message);
   }
-  invalidate({ projects: true, home: true });
+  invalidate({ projects: true, tasks: true });
+}
+
+// People's Add to project, once confirmed: true when they were added.
+// /live then tells every open page, so the project's Staff shows them.
+export async function addToProject(person, projectName) {
+  try {
+    await api.addToProject(projectName, person.id);
+    toast("saved", `Added ${person.displayName} to ${projectName}`);
+    return true;
+  } catch (err) {
+    toast("error", err.message);
+    return false;
+  } finally {
+    invalidate({ people: true });
+  }
+}
+
+export function confirm(message) {
+  return legacy().confirm(message);
 }
 
 export function navigate(path, options) {
@@ -166,5 +215,5 @@ export function init() {
   newFolders.value = legacy().newFolders();
   view.value = legacy().view();
   project.value = legacy().project();
-  loadForView(view.value);
+  loadStale();
 }

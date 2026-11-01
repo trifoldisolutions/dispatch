@@ -1,4 +1,4 @@
-// The command palette (Ctrl+K, or Search in the left menu): type to
+// The command palette (Ctrl+K): type to
 // find a page, a project, one of its sections, or an action (run or stop it,
 // open it in VS Code, add a project), then Enter.
 import { signal } from "@preact/signals";
@@ -34,7 +34,6 @@ function paletteProjects() {
 function commands() {
   const go = (path) => () => store.navigate(path);
   const list = [
-    { id: "home", label: "Home", hint: "Page", icon: "home", run: go("/") },
     { id: "projects", label: "Projects", hint: "Your first project", icon: "grid", run: () => store.navigate(firstProjectPath.value || "/projects") },
     { id: "self", label: "Dispatch", hint: "Dispatch's own page", icon: "sliders", run: go("/dispatch") },
     { id: "new", label: "New project", hint: "Action", icon: "plus", run: () => window.DispatchLegacy.openCreateDrawer() },

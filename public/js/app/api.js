@@ -16,7 +16,13 @@ async function request(method, url, data) {
 const project = (name) => encodeURIComponent(name);
 
 export const getMyProjects = () => request("GET", "/api/me/projects");
-export const getHome = () => request("GET", "/api/me/home");
+export const getMyTasks = () => request("GET", "/api/me/tasks");
+// all: everyone you work with, not just the first few (the People page's).
+export const getPeople = (q = "", role = "", all = false) => {
+  const params = new URLSearchParams(Object.entries({ q, role, all: all ? "1" : "" }).filter(([, value]) => value));
+  return request("GET", `/api/me/people${params.size ? `?${params}` : ""}`);
+};
+export const addToProject = (name, userId) => request("POST", `/api/projects/${project(name)}/staff`, { userId });
 export const getPortStatus = (ports) => request("GET", `/api/port-status?ports=${ports.join(",")}`);
 export const startProject = (name) => request("POST", `/api/projects/${project(name)}/start`);
 export const stopProject = (name) => request("POST", `/api/projects/${project(name)}/stop`);

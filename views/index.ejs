@@ -19,8 +19,9 @@
 </script>
 </head>
 <body>
-<%# The left menu: the app's pages, Search (the command palette), places
-    kept for Inbox and Chat, then Dispatch's own page and the account. Under
+<%# The left menu: Projects, places kept for Inbox and Chat, then
+    Dispatch's own page and the account (the command palette has no place
+    here: Ctrl+K opens it, see public/js/app/palette.js). Under
     640px it's a bar along the bottom instead. render()
     (public/js/legacy/router.js) marks the current page with aria-current. %>
 <nav id="rail" class="tw-reset fixed z-30 flex bg-panel border-line
@@ -29,25 +30,16 @@
   <a href="/" data-route class="max-sm:hidden mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-[15px] font-bold text-white" title="Dispatch">D</a>
   <% const railItem = "flex w-14 flex-col items-center gap-1 rounded-lg py-2 text-[11px] font-medium text-dim hover:bg-line/50 hover:text-fg aria-[current=page]:bg-accent/15 aria-[current=page]:text-fg"; %>
   <% const railSoon = "flex w-14 flex-col items-center gap-1 rounded-lg py-2 text-[11px] font-medium text-dim opacity-45 cursor-default max-sm:hidden"; %>
-  <a href="/" data-route data-rail="home" class="<%= railItem %>">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg>
-    Home
-  </a>
   <a href="/projects" data-route data-rail="projects" class="<%= railItem %>">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>
     Projects
   </a>
-  <%# Opens the command palette (public/js/app/palette.js), as Ctrl+K does. %>
-  <button id="palette-btn" type="button" class="<%= railItem %>" title="Jump to a page, project or action (Ctrl K)">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-    Search
-  </button>
   <span class="<%= railSoon %>" title="Shared mailboxes: coming soon">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13.5V18a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4.5M4 13.5 6.5 5h11l2.5 8.5M4 13.5h4.5l1.5 2.5h4l1.5-2.5H20"/></svg>
     Inbox
   </span>
   <span class="<%= railSoon %>" title="Chat: coming soon">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 18.5V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8.5z"/><path d="M9 9h6M9 12h4"/></svg>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12a5 5 0 0 1 7 7m-7-7a5 5 0 0 0-2 4a5 5 0 0 0 .224 1.483c.272.88.076 1.86-.099 2.784a.468.468 0 0 0 .592.539c.848-.232 1.691-.43 2.557-.112A5 5 0 0 0 8 21a4.99 4.99 0 0 0 4-2m-7-7c0-4.685 2.875-9 8-9a8 8 0 0 1 7.532 10.7c-.476 1.326.037 3.102.337 4.568a.451.451 0 0 1-.584.526c-1.312-.41-2.852-.986-4.085-.466c-1.334.562-2.736.672-4.2.672"/></svg>
     Chat
   </span>
   <span class="max-sm:hidden flex-1"></span>
@@ -55,15 +47,31 @@
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
     Dispatch
   </a>
-  <form method="post" action="/logout" class="m-0 flex flex-col items-center gap-1.5 sm:mt-2">
-    <% const userAvatar = avatarUrl(user); %>
-    <span class="max-sm:hidden flex h-8 w-8 items-center justify-center rounded-full bg-line text-[13px] font-semibold text-fg" title="Logged in as <%= user.name %> (<%= user.email %>)"><% if (userAvatar) { %><img src="<%= userAvatar %>" alt="" class="h-full w-full rounded-full object-cover"><% } else { %><%= (user.name || "?").trim().charAt(0).toUpperCase() %><% } %></span>
-    <button type="submit" class="flex h-8 w-8 items-center justify-center rounded-lg text-dim hover:bg-line/50 hover:text-fg" aria-label="Log out" title="Log out <%= user.name %>">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" /><path d="M10 12h10" /><path d="m17 9 3 3-3 3" />
-      </svg>
-    </button>
-  </form>
+  <%# The account: its avatar opens a popup (a popover, so a click beside it
+      or Escape closes it) with the name, email and Log out. main.js places
+      it beside the avatar, or above it on the phone's bottom bar. %>
+  <% const userAvatar = avatarUrl(user); %>
+  <%# With no picture, mynaui's user icon stands in, as on every avatar. %>
+  <% const userIcon = (size) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 7.5a3 3 0 1 1-6 0a3 3 0 0 1 6 0m4.5 13c-.475-9.333-14.525-9.333-15 0"/></svg>`; %>
+  <button id="account-btn" type="button" popovertarget="account-menu" aria-label="Your account" title="<%= user.name %>"
+    class="flex h-8 w-8 items-center justify-center rounded-full bg-line text-dim outline-none ring-2 ring-transparent ring-offset-2 ring-offset-panel hover:ring-line focus-visible:ring-accent aria-expanded:ring-accent sm:mt-2"><% if (userAvatar) { %><img src="<%= userAvatar %>" alt="" class="h-full w-full rounded-full object-cover"><% } else { %><%- userIcon(18) %><% } %></button>
+  <div id="account-menu" popover class="inset-auto m-0 w-[300px] max-w-[calc(100vw-16px)] rounded-lg border border-line bg-panel p-3 text-fg shadow-[0_8px_20px_rgba(0,0,0,0.25)]">
+    <div class="flex items-center gap-3">
+      <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-line text-dim"><% if (userAvatar) { %><img src="<%= userAvatar %>" alt="" class="h-full w-full rounded-full object-cover"><% } else { %><%- userIcon(22) %><% } %></span>
+      <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span class="truncate text-[13px] font-semibold"><%= user.name %></span>
+        <span class="truncate text-[12px] text-dim"><%= user.email %></span>
+      </span>
+      <form method="post" action="/logout" class="m-0 shrink-0">
+        <button type="submit" class="flex h-8 items-center gap-1.5 rounded-md border border-line px-2.5 text-[12px] font-medium text-dim hover:border-danger/50 hover:text-danger">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" /><path d="M10 12h10" /><path d="m17 9 3 3-3 3" />
+          </svg>
+          Log out
+        </button>
+      </form>
+    </div>
+  </div>
 </nav>
 
 <div class="app-main sm:pl-[72px] max-sm:pb-14">
@@ -79,10 +87,12 @@
 <%# Up to three columns: on project pages, the list of your projects
     (#project-list-root, drawn by public/js/app/projects.js; under 1280px it
     opens over the page instead, from the toolbar's Projects), the page
-    itself, and from a 2072px window the Add/Edit project form
-    (#create-side, filled by renderCreateForm in
-    public/js/legacy/project-form.js). The page's layouts follow its own
-    column's width (container queries on .app-content), not the window's. %>
+    itself, and from a 2072px window a side column (#create-side): the
+    Add/Edit project form (filled by renderCreateForm in
+    public/js/legacy/project-form.js), then your tasks on other projects
+    and People (#side-root, drawn by public/js/app/side.js). The page's
+    layouts follow its own column's width (container queries on
+    .app-content), not the window's. %>
 <div class="app-columns">
 <div id="project-list-root" class="tw-reset contents"></div>
 <div class="app-content">
@@ -105,12 +115,13 @@
 
 <div id="project-view" class="project-view" hidden></div>
 
-<%# Home, and /projects while it finds your first project (or has none to
-    show): drawn by public/js/app (Preact). %>
-<div id="app-view" class="tw-reset" data-user="<%= user.name %>" hidden></div>
+<%# / and /projects while they find your project (or when there's none to
+    show), and /people: drawn by public/js/app (Preact). %>
+<div id="app-view" class="tw-reset" hidden></div>
 </div>
-<aside id="create-side" class="create-side" aria-label="Add project" hidden>
+<aside id="create-side" class="create-side" aria-label="Add project, your tasks and people" hidden>
   <div id="create-project-side"></div>
+  <div id="side-root" class="tw-reset"></div>
 </aside>
 </div>
 </div>

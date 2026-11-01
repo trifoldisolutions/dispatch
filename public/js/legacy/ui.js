@@ -9,7 +9,7 @@ let statusHideTimer = null;
 function setStatus(kind, message) {
   clearTimeout(statusHideTimer);
   const icons = { saving: ICON_SPINNER, saved: ICON_CHECK, error: ICON_WARNING };
-  const labels = { saving: "Saving…", saved: "All changes saved", error: message || "Save failed" };
+  const labels = { saving: "Saving…", saved: message || "All changes saved", error: message || "Save failed" };
   statusIconEl.innerHTML = icons[kind] || "";
   statusTextEl.textContent = labels[kind] || "";
   statusEl.className = "toast " + kind;
@@ -79,7 +79,8 @@ const DROPDOWN_EDGE_INSET = 8;
 const DROPDOWN_MIN_HEIGHT = 120;
 
 // The box an open menu has to stay inside: the dialog it was opened from
-// (new folders, confirm, ...) when there is one, clipped to the viewport
+// (new folders, confirm, ...) or the side column's project form when there
+// is one, clipped to the viewport
 // either way. A menu inside a popup that only checked the viewport could
 // hang past the popup's bottom edge (or, for a nested menu, stretch the
 // popup's own scroll area) even with plenty of room left on screen.
@@ -94,7 +95,10 @@ function dropdownBounds(anchorEl) {
     bottom: window.innerHeight - DROPDOWN_EDGE_INSET,
     right: window.innerWidth - DROPDOWN_EDGE_INSET,
   };
-  const popup = anchorEl.closest(".modal-panel-inner");
+  // The side column's project form scrolls on its own too, so a menu
+  // hanging past its foot (the form's category, in its last row) would be
+  // clipped: there it opens upward instead.
+  const popup = anchorEl.closest(".modal-panel-inner, .create-side");
   if (popup) {
     const r = popup.getBoundingClientRect();
     bounds.top = Math.max(bounds.top, r.top + DROPDOWN_EDGE_INSET);

@@ -4,7 +4,7 @@
 // From a 1280px window it's a column of its own; narrower, the toolbar's
 // Projects opens it over the page. There's no page for the list itself:
 // /projects, and the left menu's Projects, open the first project in it
-// (see firstProjectPath).
+// (see firstProjectPath), and / the last one you had open (landingPath).
 import { signal, computed, effect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { html } from "./html.js";
@@ -86,12 +86,46 @@ export const firstProjectPath = computed(() => {
   return any ? projectPath(any.name) : null;
 });
 
-// /projects gives way to that project as soon as the list has loaded,
-// replacing itself in the history so Back doesn't land on it again. Once the
-// render that announced /projects is over, since that render is what got here.
+// The last project you had open, remembered in this browser for / to open
+// (there's no home page). Dispatch's own page doesn't count: it has its own
+// place in the left menu.
+const LAST_KEY = "dispatch.lastProject";
+const lastProject = signal(readLastProject());
+
+function readLastProject() {
+  try {
+    return localStorage.getItem(LAST_KEY);
+  } catch {
+    return null; // storage blocked: / opens the first project
+  }
+}
+
+effect(() => {
+  const name = store.view.value === "project" ? store.project.value : null;
+  const mine = store.myProjects.value.list.find((p) => p.name === name);
+  if (!mine || mine.self || !mine.hasFolder || name === lastProject.peek()) return;
+  lastProject.value = name;
+  try {
+    localStorage.setItem(LAST_KEY, name);
+  } catch {
+    // storage blocked: remembered until the page reloads
+  }
+});
+
+// The project / opens: the last one you had open while it's still in your
+// list with a page, else the first.
+const landingPath = computed(() => {
+  const last = store.myProjects.value.list.find((p) => p.name === lastProject.value && p.hasFolder && !p.self);
+  return last ? projectPath(last.name) : firstProjectPath.value;
+});
+
+// / and /projects give way to their project as soon as the list has loaded,
+// replacing themselves in the history so Back doesn't land on them again.
+// Once the render that announced them is over, since that render is what got
+// here.
 effect(() => {
   if (store.view.value !== "projects") return;
-  const path = firstProjectPath.value;
+  const path = location.pathname === "/" ? landingPath.value : firstProjectPath.value;
   if (path) queueMicrotask(() => store.view.value === "projects" && store.navigate(path, { replace: true }));
 });
 
@@ -172,9 +206,42 @@ function TaskFigures({ tasks }) {
     ${tasks.dueSoon > 0 && html`<span class="text-fg">${tasks.dueSoon} due soon</span>`}`;
 }
 
+const STAFF_SHOWN = 5; // avatars on a card; the rest are counted after them
+
+// "Michael Hart · Lead", on hover.
+function staffLabel(person) {
+  return `${person.name} · ${ROLE_LABELS[person.role] || person.role}`;
+}
+
+// Who else is on the project (you're on every card in the list, so not you):
+// their avatars overlapping, leads first and on top, the first STAFF_SHOWN of
+// them, then how many more there are. Each avatar gives the person and their
+// role on hover; the count, everyone it stands for.
+function StaffStack({ staff }) {
+  const others = staff.filter((person) => !person.you);
+  if (!others.length) {
+    return html`<span class="text-[12px] italic text-dim/70">${staff.length ? "Only you" : "No staff yet"}</span>`;
+  }
+  const shown = others.slice(0, STAFF_SHOWN);
+  const more = others.slice(STAFF_SHOWN);
+  return html`<div class="flex min-w-0 items-center">
+    <span class="flex">
+      ${shown.map((person, i) => html`<span key=${person.id} role="img" aria-label=${staffLabel(person)} title=${staffLabel(person)}
+        style=${{ zIndex: shown.length - i }}
+        class="relative -ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-line text-dim ring-2 ring-panel first:ml-0">
+        ${person.avatar
+          ? html`<img src=${person.avatar} alt="" class="h-full w-full rounded-full object-cover" />`
+          : html`<${Icon} name="user" size=${16} />`}
+      </span>`)}
+    </span>
+    ${more.length > 0 &&
+    html`<span title=${more.map(staffLabel).join("\n")} class="ml-2 whitespace-nowrap text-[12px] text-dim">+${more.length} more</span>`}
+  </div>`;
+}
+
 // A project at a glance: run state, category and port (while it runs, a
-// blue pill linking to the site), description, task figures and last journal entry, your
-// role, VS Code and Run/Stop. The whole card opens its page; the page's own
+// blue pill linking to the site), description, task figures and last journal entry, its
+// staff, VS Code and Run/Stop. The whole card opens its page; the page's own
 // project is outlined.
 function ProjectCard({ project, state, busy, current, day }) {
   const running = state === "running";
@@ -202,7 +269,7 @@ function ProjectCard({ project, state, busy, current, day }) {
       ${project.lastActivity && html`<span title=${project.lastActivity.content}>Last entry ${lastEntryLabel(project.lastActivity.date, day)}</span>`}
     </div>
     <div class="relative z-10 mt-3 flex items-center gap-2 border-t border-line/70 pt-3">
-      <span class="rounded bg-line/60 px-1.5 py-px text-[11px] text-dim">${ROLE_LABELS[project.role] || project.role}</span>
+      <${StaffStack} staff=${project.staff} />
       <span class="flex-1"></span>
       ${project.hasFolder && html`<button type="button" title="Open in VS Code" onClick=${() => store.openInVSCode(project.name)}
         class="flex h-8 w-8 items-center justify-center rounded-md border border-line text-dim hover:text-fg"><${Icon} name="code" size=${15} /></button>`}

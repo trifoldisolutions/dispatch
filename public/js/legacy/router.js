@@ -1,4 +1,4 @@
-// Addresses: which page /, /<name> and /<name>/<section> show (and /projects, which stands for your first project), and render(), which draws it.
+// Addresses: which page /<name> and /<name>/<section> show (and / and /projects, which stand for your last and first project), and render(), which draws it.
 
 function render() {
   // Portaled dropdown menus (see buildTagsDropdown) live on <body>, outside
@@ -10,9 +10,9 @@ function render() {
 
   const onProjectPage = currentView === "project";
   projectViewEl.hidden = !onProjectPage;
-  appViewEl.hidden = onProjectPage; // Home and /projects: drawn by public/js/app
+  appViewEl.hidden = onProjectPage; // / and /projects while they find your project, and /people: drawn by public/js/app
   // The toolbar (the project list's button under 1280px and the back link)
-  // only applies to project pages; Home starts at the top.
+  // only applies to project pages.
   toolbarEl.hidden = !onProjectPage;
   // Dispatch's own page is in the left menu; any other project belongs under Projects.
   const railKey = onProjectPage ? (currentProjectName === SELF_PROJECT.name ? "self" : "projects") : currentView;
@@ -31,8 +31,6 @@ function render() {
     ? section
       ? `${section.title} · ${currentProjectName} — ${DEFAULT_TITLE}`
       : `${currentProjectName} — ${DEFAULT_TITLE}`
-    : currentView === "home"
-    ? DEFAULT_TITLE
     : `${VIEW_TITLES[currentView]} — ${DEFAULT_TITLE}`;
   if (onProjectPage) renderProjectPage();
   else clearProjectView();
@@ -50,14 +48,15 @@ function render() {
 
   updateBodyScrollLock();
   positionOpenDropdowns();
-  // Home, the project list and the palette (public/js/app) redraw from this
-  // too: the page changed, or something they read through window.DispatchLegacy did.
+  // The project list, the side column's tasks and people and the palette
+  // (public/js/app) redraw from this too: the page changed, or something
+  // they read through window.DispatchLegacy did.
   document.dispatchEvent(new CustomEvent("dispatch:render", { detail: { view: currentView, project: currentProjectName } }));
 }
 
-const VIEW_TITLES = { home: "Home", projects: "Projects" };
+const VIEW_TITLES = { projects: "Projects", people: "People" };
 
-// Home and /projects draw themselves (public/js/app); the project page is
+// / and /projects, and /people, draw themselves (public/js/app); the project page is
 // emptied meanwhile, so its hidden header doesn't answer lookups and is
 // rebuilt fresh when a project opens again.
 function clearProjectView() {
@@ -66,12 +65,14 @@ function clearProjectView() {
   delete projectViewEl.dataset.project;
 }
 
-// --- Routing: Home lives at "/", and each project has its own page at
-// /<name>, with a page for each of its panels at /<name>/<section> (see
-// PROJECT_SECTIONS); the list of your projects sits beside them all. There's
-// no page for the list itself: /projects (old links, or the left menu before
-// the list has loaded) opens your first project, replacing itself in the
-// history (see public/js/app/projects.js). Pages are keyed by folder name,
+// --- Routing: each project has its own page at /<name>, with a page for
+// each of its panels at /<name>/<section> (see PROJECT_SECTIONS); the list
+// of your projects sits beside them all. There's no page for the list
+// itself, nor a home page: / opens the last project you had open, and
+// /projects (old links, or the left menu before the list has loaded) your
+// first, each replacing itself in the history (see public/js/app/projects.js),
+// so both are the "projects" view here. /people is everyone you work with
+// (public/js/app/side.js). Pages are keyed by folder name,
 // not port — the name stays put while a project is switched to another port
 // or category or (un)assigned, so its pages survive all of those. The server
 // answers all of these addresses with this same file (and keeps project
@@ -81,21 +82,21 @@ function projectPath(name, section = null) {
   return "/" + encodeURIComponent(name) + (section ? `/${section}` : "");
 }
 
-const APP_VIEWS = ["projects"];
+const APP_VIEWS = ["projects", "people"];
 
 // { view, project, section } for an address: a null project on the app's
 // own pages, and a null section on a project's own page. Anything past the
 // section is kept on it, so a mistyped address shows as a section that
 // doesn't exist.
 function routeFromPath(pathname) {
-  const home = { view: "home", project: null, section: null };
+  const landing = { view: "projects", project: null, section: null };
   const [encoded, ...rest] = pathname.replace(/^\/+|\/+$/g, "").split("/");
-  if (!encoded) return home;
+  if (!encoded) return landing;
   if (APP_VIEWS.includes(encoded) && rest.length === 0) return { view: encoded, project: null, section: null };
   try {
     return { view: "project", project: decodeURIComponent(encoded), section: rest.length > 0 ? rest.join("/") : null };
   } catch {
-    return home;
+    return landing;
   }
 }
 
@@ -152,7 +153,7 @@ function resetPageState() {
   }
   if (editingKey) {
     editingKey = null;
-    createForm = { category: null, port: null, name: "", description: "", url: "" };
+    createForm = { category: null, name: "", description: "", url: "" };
   }
   createDrawerOpen = false;
   taskFilter = emptyTaskFilter();

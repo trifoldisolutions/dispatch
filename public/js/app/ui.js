@@ -1,6 +1,6 @@
-// Small pieces Home, the project list and the palette share: icons, the live
-// dot, a project's category badge, panels, buttons, a dropdown and date
-// wording.
+// Small pieces the project list, the side column and the palette share:
+// icons, the live dot, a project's category badge, panels, buttons, a
+// dropdown and date wording.
 import { useState, useEffect, useRef } from "preact/hooks";
 import { html } from "./html.js";
 
@@ -9,6 +9,8 @@ const paths = {
   play: html`<path d="M8 6.5v11a1 1 0 0 0 1.5.86l9-5.5a1 1 0 0 0 0-1.72l-9-5.5A1 1 0 0 0 8 6.5z" fill="currentColor" stroke="none" />`,
   stop: html`<rect x="6.5" y="6.5" width="11" height="11" rx="2.5" fill="currentColor" stroke="none" />`,
   arrow: html`<path d="M5 12h14M13 6l6 6-6 6" />`,
+  // A panel title's link (.project-panel-title-link), at the 1.5 stroke of the project page's own (ICON_CHEVRON_RIGHT).
+  chevronRight: html`<path stroke-width="1.5" d="m9 18l6-6l-6-6" />`,
   external: html`<path d="M14 5h5v5M19 5l-8 8M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4" />`,
   code: html`<path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14" />`,
   check: html`<path d="M5 12.5l4.5 4.5L19 7.5" />`,
@@ -17,11 +19,14 @@ const paths = {
   plus: html`<path d="M12 5v14M5 12h14" />`,
   search: html`<circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />`,
   folder: html`<path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />`,
-  home: html`<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z" />`,
   grid: html`<rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" />`,
   ports: html`<rect x="3" y="4" width="18" height="6" rx="1.5" /><rect x="3" y="14" width="18" height="6" rx="1.5" /><path d="M7 7h.01M7 17h.01M11 7h6M11 17h6" />`,
   list: html`<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" />`,
   users: html`<circle cx="9" cy="8" r="3.5" /><path d="M3 19c.5-3 3-5 6-5s5.5 2 6 5M16 4.5a3.5 3.5 0 0 1 0 7M18 14c1.7.6 2.8 2.4 3 5" />`,
+  userPlus: html`<circle cx="10" cy="8" r="3.5" /><path d="M4 19c.5-3 3-5 6-5 1.4 0 2.7.4 3.7 1.2M18 13v6M15 16h6" />`,
+  message: html`<path d="M5 18.5V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8.5z" />`,
+  // An avatar's stand-in when there's no picture, at its own 1.5 stroke since it's shown large.
+  user: html`<path stroke-width="1.5" d="M15 7.5a3 3 0 1 1-6 0a3 3 0 0 1 6 0m4.5 13c-.475-9.333-14.525-9.333-15 0" />`,
   alert: html`<path d="M12 8.5V13m0 3.5v.01M10.3 4.6 3.2 17a2 2 0 0 0 1.7 3h14.2a2 2 0 0 0 1.7-3L13.7 4.6a2 2 0 0 0-3.4 0z" />`,
   spinner: html`<path d="M12 3a9 9 0 1 0 9 9" class="origin-center animate-spin" />`,
   sliders: html`<path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" />`,

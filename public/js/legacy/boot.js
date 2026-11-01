@@ -122,7 +122,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && currentView === "project" && !e.target.closest("input, textarea, select")) {
     if (editingKey) {
       editingKey = null;
-      createForm = { category: null, port: null, name: "", description: "", url: "" };
+      createForm = { category: null, name: "", description: "", url: "" };
       render();
     } else if (editingTaskId !== null && editingTaskProject !== null) {
       cancelTaskEdit(editingTaskProject);
@@ -160,9 +160,10 @@ setInterval(refreshPortLiveStatus, 5000);
 setInterval(refreshProjectRunStatus, 5000);
 setInterval(refreshStaffPresence, 15000);
 
-// What the newer parts of the page (public/js/app: Home, the project list,
-// the command palette) use from these scripts while both exist. They redraw on
-// the "dispatch:render" event that every render() sends.
+// What the newer parts of the page (public/js/app: the project list, the
+// side column's tasks and people, the command palette) use from these
+// scripts while both exist. They redraw on the "dispatch:render" event that
+// every render() sends.
 window.DispatchLegacy = {
   view: () => currentView,
   project: () => currentProjectName,
@@ -179,7 +180,8 @@ window.DispatchLegacy = {
     refreshProjectRunStatus();
     refreshPortLiveStatus();
   },
-  // A task changed elsewhere (Home): the Tasks panel refetches next time.
+  // A task changed elsewhere (the side column's Your tasks): the Tasks panel
+  // refetches next time.
   forgetTasks(name) {
     delete taskCache[name];
   },

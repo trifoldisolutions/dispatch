@@ -13,6 +13,7 @@ const { createLive } = require("./live");
 const { avatarUrl, displayName, avatarRoutes } = require("./people");
 const Project = require("./models/Project");
 const Membership = require("./models/Membership");
+const User = require("./models/User");
 const execAsync = promisify(exec);
 
 const PORT = 3000;
@@ -21,7 +22,7 @@ const SELF_PROJECT = path.basename(__dirname); // Dispatch's own project: in the
 // The app's own pages, beside each project's /<name>, and the other first
 // path segments Dispatch answers on. A project folder can't take one of these
 // names, or its page would be unreachable.
-const APP_PAGES = ["projects"];
+const APP_PAGES = ["projects", "people"];
 const RESERVED_NAMES = new Set([...APP_PAGES, "ports", "inbox", "chat", "login", "logout", "api", "css", "js", "vendor", "live", "avatars"]);
 const CATEGORIES = ["fire", "breeze", "cold"];
 const CATEGORY_LIMITS = { fire: 2, breeze: 4 }; // cold is unlimited
@@ -140,10 +141,10 @@ app.use(avatarRoutes);
 // The left menu's account button shows the user's picture when there is one.
 app.locals.avatarUrl = avatarUrl;
 
-// Home (/), and /projects, which opens your first project once the page
-// has your list (old links, or the left menu before it loads). Like the
-// project pages below, they're the same page: index.ejs reads the path and
-// shows that one.
+// / opens the last project you had open, and /projects your first (old
+// links, or the left menu before the page has your list), once the page has
+// it. Like the project pages below, they're the same page: index.ejs reads
+// the path and shows that one.
 app.get(["/", ...APP_PAGES.map((page) => `/${page}`)], requireLogin, (req, res) => {
   res.render("index");
 });
@@ -392,10 +393,37 @@ app.get("/api/registry", async (req, res) => {
 const STAFF_ROLES = ["lead", "dev"];
 const PROJECT_STATUSES = Project.schema.path("status").enumValues;
 
-// A project's staff, from its memberships: leads first, then devs, each by
-// name, as [{ id, name, displayName, avatar, role, you, online }] — `you`
-// marks the logged-in user's own card, `online` whoever has Dispatch open
-// (see isOnline), `avatar` their picture's address or null (see people.js). These
+// The staff of each of these projects, from their memberships, as a Map of
+// project id -> [{ id, name, displayName, avatar, role, you, online }]: leads
+// first, then devs, each by name. `you` marks the viewer, `online` whoever
+// has Dispatch open (see isOnline), `avatar` their picture's address or null
+// (see people.js). A project with no one on it has no entry.
+async function staffByProject(projectIds, viewer) {
+  const memberships = await Membership.find({ project: { $in: projectIds }, role: { $in: STAFF_ROLES } })
+    .populate("user", { name: 1, email: 1, lastSeenAt: 1 })
+    .lean();
+  const byProject = new Map();
+  for (const { project, user, role } of memberships) {
+    if (!user) continue; // its account was deleted
+    const key = String(project);
+    if (!byProject.has(key)) byProject.set(key, []);
+    byProject.get(key).push({
+      id: String(user._id),
+      name: user.name,
+      displayName: displayName(user.name),
+      avatar: avatarUrl(user),
+      role,
+      you: String(user._id) === String(viewer._id),
+      online: isOnline(user),
+    });
+  }
+  for (const staff of byProject.values()) {
+    staff.sort((a, b) => STAFF_ROLES.indexOf(a.role) - STAFF_ROLES.indexOf(b.role) || a.name.localeCompare(b.name));
+  }
+  return byProject;
+}
+
+// A project's staff (see staffByProject) and clients, for its header. These
 // are people's details, so unlike the rest of the API (for now) it needs a
 // login. A project with no record yet simply has no one on it.
 app.get("/api/projects/:name/staff", async (req, res) => {
@@ -403,21 +431,7 @@ app.get("/api/projects/:name/staff", async (req, res) => {
   try {
     const project = await Project.findOne({ name: req.params.name }, { _id: 1 }).lean();
     if (!project) return res.json({ staff: [], clients: [] });
-    const memberships = await Membership.find({ project: project._id, role: { $in: STAFF_ROLES } })
-      .populate("user", { name: 1, email: 1, lastSeenAt: 1 })
-      .lean();
-    const staff = memberships
-      .filter((membership) => membership.user) // its account was deleted
-      .map(({ user, role }) => ({
-        id: String(user._id),
-        name: user.name,
-        displayName: displayName(user.name),
-        avatar: avatarUrl(user),
-        role,
-        you: String(user._id) === String(req.user._id),
-        online: isOnline(user),
-      }))
-      .sort((a, b) => STAFF_ROLES.indexOf(a.role) - STAFF_ROLES.indexOf(b.role) || a.name.localeCompare(b.name));
+    const staff = (await staffByProject([project._id], req.user)).get(String(project._id)) || [];
     res.json({ staff, clients: await projectClients(project._id, req.user) });
   } catch (err) {
     res.status(500).json({ error: `failed to load staff: ${err.message}` });
@@ -447,17 +461,17 @@ async function projectClients(projectId, viewer) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// ---- The logged-in user's own views (Home, Projects) ----------------------
+// ---- The logged-in user's own views (the project list, the side column) ---
 // These need a login and only ever show the user's own projects: those they
 // hold a membership on, or every project for an admin. Agents don't use them,
 // so unlike the rest of the API they can check permissions already.
 
-const HOME_TASK_LIMIT = 60;
-const HOME_ACTIVITY_DAYS = 14;
-const HOME_ACTIVITY_LIMIT = 40;
-const HOME_COMMIT_LIMIT = 30;
+const ACTIVITY_DAYS = 14;
+const ACTIVITY_LIMIT = 40;
+const COMMIT_LIMIT = 30;
 const DUE_SOON_DAYS = 7;
-const COMMITS_CACHE_MS = 60 * 1000; // a project's recent commits, so reloading Home doesn't run git 20 times
+const COMMITS_CACHE_MS = 60 * 1000; // a project's recent commits, so a reload doesn't run git 20 times
+const PEOPLE_SHOWN = 5; // at most, in the side column's People and each search's results (fewer when they'd make it scroll)
 const recentCommitsCache = new Map(); // name -> { at, commits }
 
 function requireApiLogin(req, res, next) {
@@ -491,7 +505,7 @@ function addDaysDateOnly(dateStr, days) {
 }
 
 // A project's tasks and journal days, or empty ones when its folder or files
-// are missing or unreadable: one broken project shouldn't blank Home.
+// are missing or unreadable: one broken project shouldn't blank the rest.
 function readProjectTasksSafe(dir) {
   try {
     return readTasks(findTasksPath(dir)).tasks;
@@ -532,7 +546,7 @@ async function recentCommits(name, dir) {
   let commits = [];
   try {
     const { stdout } = await execAsync(
-      `git log --since="${HOME_ACTIVITY_DAYS} days ago" -n 10 --format=${GIT_LOG_FORMAT}`,
+      `git log --since="${ACTIVITY_DAYS} days ago" -n 10 --format=${GIT_LOG_FORMAT}`,
       { cwd: dir, maxBuffer: 1024 * 1024 }
     );
     commits = stdout.split("\n").filter((line) => line.trim()).map(parseGitLogLine);
@@ -544,13 +558,16 @@ async function recentCommits(name, dir) {
 }
 
 // The Projects page's list: each project with the user's role on it, its
-// place in the registry, and its task figures. Running/listening comes from
-// /api/running-projects and /api/port-status (and /live) like everywhere else.
+// staff, its place in the registry, and its task figures. Running/listening
+// comes from /api/running-projects and /api/port-status (and /live) like
+// everywhere else.
 app.get("/api/me/projects", requireApiLogin, async (req, res) => {
   try {
     const today = todayDateOnly();
     const folders = new Set(listProjectFolders());
-    const projects = (await projectsForUser(req.user)).map(({ project, role }) => {
+    const mine = await projectsForUser(req.user);
+    const staff = await staffByProject(mine.map(({ project }) => project._id), req.user);
+    const projects = mine.map(({ project, role }) => {
       const self = project.name === SELF_PROJECT;
       const hasFolder = folders.has(project.name);
       const dir = hasFolder ? resolveProjectDir(project.name) : null;
@@ -566,6 +583,7 @@ app.get("/api/me/projects", requireApiLogin, async (req, res) => {
         status: project.status || "active",
         self,
         role,
+        staff: staff.get(String(project._id)) || [],
         hasFolder,
         tasks: taskFigures(dir ? readProjectTasksSafe(dir) : [], today),
         lastActivity: lastEntry ? { date: lastDay.date, time: lastEntry.time, content: lastEntry.content } : null,
@@ -577,27 +595,27 @@ app.get("/api/me/projects", requireApiLogin, async (req, res) => {
   }
 });
 
-// Home: open tasks across the user's projects (overdue and soonest due
-// first), what happened lately (journal entries and commits), and the people
-// they work with. Tasks have no assignee yet, so "yours" means on your
-// projects; clients' projects are left out, since clients aren't staff.
-app.get("/api/me/home", requireApiLogin, async (req, res) => {
-  try {
-    const today = todayDateOnly();
-    const since = addDaysDateOnly(today, -HOME_ACTIVITY_DAYS);
-    const folders = new Set(listProjectFolders());
-    const mine = (await projectsForUser(req.user)).filter(({ role }) => role !== "client");
+// The projects whose tasks and journals count as the user's: their staff
+// ones (clients aren't staff), with a folder to read them from.
+async function staffProjectDirs(user) {
+  const folders = new Set(listProjectFolders());
+  return (await projectsForUser(user))
+    .filter(({ project, role }) => role !== "client" && folders.has(project.name))
+    .map(({ project }) => ({ name: project.name, dir: resolveProjectDir(project.name) }));
+}
 
+// Open tasks across the user's projects, overdue and soonest due first, then
+// undated ones newest first: the side column's Your tasks, which leaves out
+// the project showing beside it. Tasks have no assignee yet, so "yours"
+// means on your projects.
+app.get("/api/me/tasks", requireApiLogin, async (req, res) => {
+  try {
     const tasks = [];
-    const activity = [];
-    const commitLists = [];
-    for (const { project } of mine) {
-      if (!folders.has(project.name)) continue;
-      const dir = resolveProjectDir(project.name);
+    for (const { name, dir } of await staffProjectDirs(req.user)) {
       for (const task of readProjectTasksSafe(dir)) {
         if (task.done || task.archived) continue;
         tasks.push({
-          project: project.name,
+          project: name,
           id: task.id,
           title: task.title,
           dueDate: task.dueDate || null,
@@ -605,59 +623,180 @@ app.get("/api/me/home", requireApiLogin, async (req, res) => {
           createdAt: task.createdAt || null,
         });
       }
-      for (const day of readProjectJournalSafe(dir)) {
-        if (day.date < since) continue;
-        for (const entry of day.entries) {
-          activity.push({ project: project.name, date: day.date, time: entry.time, content: entry.content, insertedAt: entry.insertedAt || null });
-        }
-      }
-      commitLists.push(recentCommits(project.name, dir).then((commits) => commits.map((c) => ({ project: project.name, ...c }))));
     }
-
-    // Overdue first, then by due date, then undated ones newest first.
     tasks.sort((a, b) => {
       if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
       if (a.dueDate) return -1;
       if (b.dueDate) return 1;
       return String(b.createdAt).localeCompare(String(a.createdAt));
     });
+    res.json({ today: todayDateOnly(), tasks });
+  } catch (err) {
+    res.status(500).json({ error: `failed to load your tasks: ${err.message}` });
+  }
+});
+
+// What happened lately on the user's projects: journal entries and commits
+// from the last ACTIVITY_DAYS, newest first. Nothing shows it since Home
+// went; it's kept for the activity page to come.
+app.get("/api/me/activity", requireApiLogin, async (req, res) => {
+  try {
+    const today = todayDateOnly();
+    const since = addDaysDateOnly(today, -ACTIVITY_DAYS);
+    const activity = [];
+    const commitLists = [];
+    for (const { name, dir } of await staffProjectDirs(req.user)) {
+      for (const day of readProjectJournalSafe(dir)) {
+        if (day.date < since) continue;
+        for (const entry of day.entries) {
+          activity.push({ project: name, date: day.date, time: entry.time, content: entry.content, insertedAt: entry.insertedAt || null });
+        }
+      }
+      commitLists.push(recentCommits(name, dir).then((commits) => commits.map((c) => ({ project: name, ...c }))));
+    }
     const sortKey = (item) => item.insertedAt || `${item.date}T${item.time}`;
     activity.sort((a, b) => sortKey(b).localeCompare(sortKey(a)));
     const commits = (await Promise.all(commitLists)).flat().sort((a, b) => b.date.localeCompare(a.date));
+    res.json({ today, activity: activity.slice(0, ACTIVITY_LIMIT), commits: commits.slice(0, COMMIT_LIMIT) });
+  } catch (err) {
+    res.status(500).json({ error: `failed to load activity: ${err.message}` });
+  }
+});
 
-    // Staff who share a project with the user, online first.
-    const projectIds = mine.map(({ project }) => project._id);
-    const shared = await Membership.find({ project: { $in: projectIds }, role: { $in: STAFF_ROLES } })
-      .populate("user", { name: 1, email: 1, lastSeenAt: 1, status: 1 })
-      .lean();
-    const people = new Map();
-    for (const { user } of shared) {
-      if (!user || user.status === "suspended") continue;
-      const id = String(user._id);
-      const person = people.get(id) || {
-        id,
-        name: user.name,
-        displayName: displayName(user.name),
-        avatar: avatarUrl(user),
-        online: isOnline(user),
-        you: id === String(req.user._id),
-        projects: 0,
-      };
-      person.projects++;
-      people.set(id, person);
+// "Léa Martin" -> "lea martin", so a search needn't get the accents right.
+function searchable(text) {
+  return String(text || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
+const PEOPLE_ROLES = ["lead", "dev", "client"]; // what People's role filter (?role=) can pick
+
+// The side column's People and the People page, for finding someone to ask
+// or to bring onto a project. Without ?q= it's PEOPLE_SHOWN of the people the
+// user shares a project with (all of them with ?all=1, for the page): online
+// first, then the most recently seen. With ?q= it
+// searches by name or email, best matches first: the whole studio's staff,
+// so a dev who has just joined and is on no project yet turns up (that's who
+// a lead most often looks for), but only the clients of the user's own
+// projects. A client never sees other clients, only the staff on their own
+// projects. ?role=lead|dev|client keeps one kind. The user never appears in
+// their own list.
+//
+// Each person: { id, name, displayName, avatar, online, lastSeenAt, role,
+// shared, projects, addTo }. role is "lead" for staff who lead any project,
+// "dev" for the rest of the staff (projects or not), "admin" for an admin on
+// none, or "client". shared names only the projects the user is on too; the
+// rest are just counted in projects (theirs, staff or client ones). addTo is
+// the user's own projects they could be added to, never any for a client.
+// `leading` lists the projects the user leads that aren't finished, where
+// Add to project can put someone: empty for anyone who isn't a lead, who
+// then doesn't get the button. `seesClients` says whether the role filter
+// offers Clients.
+app.get("/api/me/people", requireApiLogin, async (req, res) => {
+  try {
+    const q = searchable(String(req.query.q || "").trim().slice(0, 80));
+    const role = PEOPLE_ROLES.includes(req.query.role) ? req.query.role : null;
+    const limit = req.query.all === "1" ? Infinity : PEOPLE_SHOWN;
+    const mine = await projectsForUser(req.user);
+    const myProjectIds = new Set(mine.map(({ project }) => String(project._id)));
+    const viewerIsClient = mine.length > 0 && mine.every((membership) => membership.role === "client");
+    const leading = mine.filter((membership) => membership.role === "lead" && membership.project.status !== "finished").map(({ project }) => project);
+
+    const [users, memberships, projects] = await Promise.all([
+      User.find({ status: "active", _id: { $ne: req.user._id } }, { name: 1, email: 1, lastSeenAt: 1, isAdmin: 1 }).lean(),
+      Membership.find({}, { user: 1, project: 1, role: 1 }).lean(),
+      Project.find({}, { name: 1 }).lean(),
+    ]);
+    const projectNames = new Map(projects.map((project) => [String(project._id), project.name]));
+    const membershipsOf = new Map(); // user id -> [{ project id, role }]
+    for (const { user, project, role } of memberships) {
+      const key = String(user);
+      if (!membershipsOf.has(key)) membershipsOf.set(key, []);
+      membershipsOf.get(key).push({ project: String(project), role });
     }
 
+    const candidates = [];
+    for (const user of users) {
+      const own = membershipsOf.get(String(user._id)) || [];
+      const staffOn = own.filter((membership) => STAFF_ROLES.includes(membership.role));
+      const isClient = staffOn.length === 0 && own.some((membership) => membership.role === "client");
+      if (isClient && viewerIsClient) continue; // clients don't see each other
+      const theirs = isClient ? own : staffOn;
+      const shared = theirs.filter(({ project }) => myProjectIds.has(project));
+      // Only search reaches beyond the user's projects, and only for staff.
+      if ((viewerIsClient || isClient || !q) && shared.length === 0) continue;
+      const kind = isClient ? "client"
+        : staffOn.some((membership) => membership.role === "lead") ? "lead"
+        : staffOn.length === 0 && user.isAdmin ? "admin"
+        : "dev";
+      if (role && kind !== role) continue;
+      const name = searchable(user.name);
+      const local = searchable(user.email.split("@")[0]);
+      if (q && !name.includes(q) && !local.includes(q)) continue;
+      const onProject = new Set(own.map(({ project }) => project));
+      candidates.push({
+        person: {
+          id: String(user._id),
+          name: user.name,
+          displayName: isClient ? user.name : displayName(user.name), // in full for a client, often a company
+          avatar: avatarUrl(user),
+          online: isOnline(user),
+          lastSeenAt: user.lastSeenAt || null,
+          role: kind,
+          shared: shared.map(({ project }) => projectNames.get(project)).filter(Boolean).sort(),
+          projects: theirs.length,
+          addTo: isClient ? [] : leading.filter((project) => !onProject.has(String(project._id))).map((project) => project.name),
+        },
+        // A search ranks names that start with what was typed first.
+        prefix: q ? name.startsWith(q) || name.split(/\s+/).some((word) => word.startsWith(q)) : false,
+      });
+    }
+
+    const seen = (person) => (person.lastSeenAt ? new Date(person.lastSeenAt).getTime() : 0);
+    candidates.sort(
+      (a, b) =>
+        b.prefix - a.prefix ||
+        b.person.online - a.person.online ||
+        seen(b.person) - seen(a.person) ||
+        a.person.name.localeCompare(b.person.name)
+    );
     res.json({
-      today,
-      tasks: tasks.slice(0, HOME_TASK_LIMIT),
-      taskTotal: tasks.length,
-      overdue: tasks.filter((t) => t.dueDate && t.dueDate < today).length,
-      activity: activity.slice(0, HOME_ACTIVITY_LIMIT),
-      commits: commits.slice(0, HOME_COMMIT_LIMIT),
-      people: [...people.values()].sort((a, b) => b.online - a.online || a.name.localeCompare(b.name)),
+      people: candidates.slice(0, limit).map(({ person }) => person),
+      leading: leading.map((project) => project.name).sort((a, b) => a.localeCompare(b)),
+      seesClients: !viewerIsClient,
     });
   } catch (err) {
-    res.status(500).json({ error: `failed to load Home: ${err.message}` });
+    res.status(500).json({ error: `failed to load people: ${err.message}` });
+  }
+});
+
+// People's Add to project: a lead brings someone onto one of their projects
+// as a developer. Only that project's leads can, and only while it isn't
+// finished. The person must be staff with no role on it yet: a membership is
+// one role per person per project, and a client can't be made a developer.
+app.post("/api/projects/:name/staff", requireApiLogin, async (req, res) => {
+  try {
+    const project = await Project.findOne({ name: req.params.name }, { name: 1, status: 1 }).lean();
+    if (!project) return res.status(404).json({ error: `no project named "${req.params.name}"` });
+    if (!(await Membership.exists({ user: req.user._id, project: project._id, role: "lead" }))) {
+      return res.status(403).json({ error: `only ${project.name}'s leads can add people to it` });
+    }
+    if (project.status === "finished") return res.status(400).json({ error: `${project.name} is finished` });
+    const userId = String((req.body && req.body.userId) || "");
+    const user = /^[a-f0-9]{24}$/i.test(userId) ? await User.findOne({ _id: userId, status: "active" }, { name: 1 }).lean() : null;
+    if (!user) return res.status(404).json({ error: "no active account with that id" });
+    const own = await Membership.find({ user: user._id }, { project: 1, role: 1 }).lean();
+    if (own.some((membership) => String(membership.project) === String(project._id))) {
+      return res.status(409).json({ error: `${displayName(user.name)} is already on ${project.name}` });
+    }
+    if (own.length > 0 && own.every(({ role }) => role === "client")) {
+      return res.status(400).json({ error: `${user.name} is a client, not a developer` });
+    }
+    await Membership.create({ user: user._id, project: project._id, role: "dev" });
+    live.projectChanged(project.name, "staff");
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    if (err.code === 11000) return res.status(409).json({ error: "they're already on that project" });
+    res.status(500).json({ error: `failed to add them: ${err.message}` });
   }
 });
 

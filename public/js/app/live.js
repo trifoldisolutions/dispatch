@@ -24,12 +24,14 @@ function handle(message) {
       break;
     case "registry":
       legacy.reloadRegistry();
-      store.invalidate({ projects: true, home: true });
+      store.invalidate({ projects: true, tasks: true, people: true });
       break;
     case "tasks":
     case "journal":
+    case "staff":
       legacy.projectDataChanged(message.project, message.type);
-      store.invalidate({ projects: true, home: true });
+      // The cards' figures and last entry, Your tasks, and who's on what in People.
+      store.invalidate({ projects: true, tasks: message.type === "tasks", people: message.type === "staff" });
       break;
   }
 }

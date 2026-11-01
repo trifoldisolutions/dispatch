@@ -261,28 +261,6 @@ body {
   0% { transform: scale(1); opacity: 0.6; }
   100% { transform: scale(2.8); opacity: 0; }
 }
-/* Read-only port display, shared by cards and the project page header. */
-.card-desc {
-  width: 100%;
-  padding: 8px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.5;
-  resize: none;
-  overflow-y: hidden;
-}
-.desc-counter {
-  align-self: flex-end;
-  margin-top: -6px;
-  font-size: 11px;
-  color: var(--text-dim);
-}
-.desc-counter.over-limit { color: var(--danger); }
-.add-form-card input:disabled { opacity: 0.6; cursor: not-allowed; }
 .card-error {
   color: var(--danger);
   font-size: 12px;
@@ -490,22 +468,14 @@ body {
 }
 .dropdown-new-tag-btn:hover { filter: brightness(1.08); }
 
-.add-form-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  background: var(--panel);
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-  padding: 18px;
-}
-.create-form-heading {
-  font-weight: 600;
-  font-size: 14px;
-}
-.create-form-subtitle {
-  align-self: flex-start;
-  margin-top: -6px;
+/* The Add/Edit project form (see buildCreateProjectForm): a panel like the
+   page's own (buildProjectPanel), with the projects folder as its header's
+   figure. Its fields look like the panels' filters (.form-field, styled
+   with .panel-filter), the description like the composers' boxes with its
+   count in its bottom padding, and its last row like the Tasks composer's:
+   the category and port, then Cancel and the button. */
+.project-form-body { display: flex; flex-direction: column; gap: 8px; }
+.project-form-root {
   padding: 0;
   border: none;
   background: none;
@@ -514,70 +484,66 @@ body {
   color: var(--text-dim);
   cursor: pointer;
 }
-.create-form-subtitle:hover:not(:disabled) { color: var(--accent); text-decoration: underline; }
-.create-form-subtitle:disabled { cursor: default; }
-.add-form-card input {
-  padding: 8px 10px;
-  border-radius: 6px;
+.project-form-root:hover { color: var(--accent); text-decoration: underline; }
+.form-field-icon svg { display: block; width: 14px; height: 14px; }
+.form-field:has(.form-field-input:disabled) { opacity: 0.6; cursor: not-allowed; }
+.form-field-input:disabled { cursor: not-allowed; }
+.project-form-desc { position: relative; }
+.project-form-desc-input {
+  display: block;
+  width: 100%;
+  padding: 8px 10px 26px;
   border: 1px solid var(--border);
+  border-radius: 6px;
   background: var(--bg);
   color: var(--text);
   font: inherit;
-  font-size: 14px;
-  width: 100%;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: hidden;
 }
-.add-form-row { display: flex; gap: 8px; }
+.project-form-desc-input:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.project-form-desc-input:focus { outline: none; border-color: var(--accent); }
+.project-form-desc-input::placeholder { color: var(--text-dim); }
+.project-form-counter {
+  position: absolute;
+  left: 10px;
+  bottom: 7px;
+  font-size: 11px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+.project-form-counter.over-limit { color: var(--danger); }
 /* The Edit form's Finished checkbox (see buildFinishedField), with a quiet
    word on what it means. */
 .add-form-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
 .add-form-check-hint { margin-left: 4px; font-size: 12px; color: var(--text-dim); }
-.add-form-row .dropdown { flex: 1; min-width: 0; }
-.add-form-row .dropdown-toggle { width: 100%; }
-/* Custom port field (see buildPortStepper): it can't leave the selected
-   category's port range, unlike a native number input. */
-.port-stepper {
-  flex: 0 0 100px;
-  display: flex;
-  border: 1px solid var(--border);
+/* Wraps, Cancel and the button going under, only if a narrow column can't
+   fit them beside the category and port. */
+.project-form-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.project-form-footer .dropdown-toggle { height: 34px; min-width: 0; gap: 8px; padding: 0 10px; }
+/* The port it gets (see formPort in buildCreateProjectForm), shown, not
+   picked: dim monospace like a stopped project's port on its card. */
+.project-form-port {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.project-form-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.project-form-cancel {
+  height: 34px;
+  padding: 0 12px;
+  border: none;
   border-radius: 6px;
-  background: var(--bg);
-  overflow: hidden;
-}
-.port-stepper[hidden] { display: none; }
-.port-stepper:focus-within { border-color: var(--accent); }
-.add-form-card .port-stepper input {
-  flex: 1;
-  min-width: 0;
-  width: auto;
-  padding: 8px 4px;
-  border: none;
-  border-radius: 0;
-  background: none;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-.add-form-card .port-stepper input:focus { outline: none; }
-.port-step-btns {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  border-left: 1px solid var(--border);
-}
-.port-step {
-  flex: 1;
-  width: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: none;
   background: none;
   color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
   cursor: pointer;
 }
-.port-step + .port-step { border-top: 1px solid var(--border); }
-.port-step:hover:not(:disabled) { color: var(--accent); }
-.port-step:disabled { opacity: 0.35; cursor: default; }
+.project-form-cancel:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
 .add-form-actions { display: flex; gap: 8px; }
 .add-form-actions > * { flex: 1; }
 .create-btn {
@@ -738,8 +704,21 @@ body {
   margin: 0 auto;
   padding: var(--toolbar-height) 32px 16px;
 }
+/* The People page (PeoplePage in public/js/app/side.js): one panel the
+   window's height, its top 11px down like the side column's, and the page's
+   own 32px on both sides, since no project list sits beside it. */
+.people-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  max-width: 1800px;
+  margin: 0 auto;
+  padding: 11px 32px 16px;
+}
+.people-page > .project-panel { flex: 1; }
 @container content (max-width: 900px) {
-  .projects-empty { padding-inline: 16px; }
+  .projects-empty,
+  .people-page { padding-inline: 16px; }
 }
 .project-header {
   position: relative;
@@ -981,13 +960,19 @@ body {
   --avatar-size: 72px;
   position: relative;
   flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: var(--avatar-size);
   height: var(--avatar-size);
   border-radius: 50%;
   background: var(--border);
+  color: var(--text-dim);
 }
-/* Their picture, when they have one (see buildAvatar). */
+/* Their picture, when they have one (see buildAvatar), else the user icon
+   at a little over half the avatar's size, as in People's (public/js/app/side.js). */
 .staff-avatar img { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.staff-avatar > svg { display: block; width: 56%; height: 56%; }
 /* Logged in: a green dot on the avatar's lower right edge, a quarter of
    its width, ringed in the card's background so it reads as cut out of the
    avatar. Its center sits on the circle, at 45°: (1 - cos 45°) / 2 of the
@@ -1032,10 +1017,10 @@ body {
    year of changes beside it rather than pushing its tasks bar down. */
 .staff-row .staff-avatar,
 .client-row .staff-avatar { --avatar-size: 40px; }
-/* No client (see buildNoClientRow): the box and avatar only outlined. */
-.client-row.empty { border-style: dashed; background: none; }
-.client-row.empty .staff-avatar { background: none; border: 1px dashed var(--border); }
-.client-row.empty .client-name { font-weight: 500; color: var(--text-dim); }
+/* No client (see buildNoClientRow): the box only outlined, as tall as a
+   client's (the row's min-height stretches it), around a one-line hint. */
+.client-row.empty { border-style: dashed; background: none; padding: 0 14px; }
+.client-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-dim); }
 .client-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .client-name,
 .client-projects { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1608,10 +1593,12 @@ body {
 .date-calendar-preset.clear:hover:not(:disabled) { color: var(--danger); border-color: var(--fire-border); background: var(--fire-bg); }
 .tasks-tab { display: flex; flex-direction: column; gap: 10px; }
 /* A panel's filter field (see buildPanelFilter) — Explorer, Tasks and
-   Journal each have one: the search text, a "3 of 27" count and a
+   Journal each have one, and the project form's fields (.form-field) look
+   the same: the search text, a "3 of 27" count and a
    clear-all button, with any dropdowns (tags, date) as divided segments at
    its right end. */
-.panel-filter {
+.panel-filter,
+.form-field {
   flex: none;
   display: flex;
   align-items: stretch;
@@ -1619,11 +1606,15 @@ body {
   border-radius: 6px;
   background: var(--bg);
 }
-.panel-filter:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.panel-filter:hover,
+.form-field:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
 .panel-filter:has(.panel-filter-input:focus),
-.panel-filter:has(.dropdown.open) { border-color: var(--accent); }
-.panel-filter-icon { flex: none; align-self: center; margin: 0 8px 0 10px; color: var(--text-dim); }
-.panel-filter-input {
+.panel-filter:has(.dropdown.open),
+.form-field:focus-within { border-color: var(--accent); }
+.panel-filter-icon,
+.form-field-icon { flex: none; align-self: center; margin: 0 8px 0 10px; color: var(--text-dim); }
+.panel-filter-input,
+.form-field-input {
   flex: 1;
   min-width: 60px;
   padding: 9px 0;
@@ -1633,8 +1624,10 @@ body {
   font: inherit;
   font-size: 13px;
 }
-.panel-filter-input:focus { outline: none; }
-.panel-filter-input::placeholder { color: var(--text-dim); }
+.panel-filter-input:focus,
+.form-field-input:focus { outline: none; }
+.panel-filter-input::placeholder,
+.form-field-input::placeholder { color: var(--text-dim); }
 .panel-filter-status {
   flex: none;
   align-self: center;
@@ -1873,7 +1866,8 @@ body {
 .task-due-toggle svg { flex: none; }
 .task-due-toggle .dropdown-caret { margin-left: auto; }
 .task-due-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-add-btn {
+.task-add-btn,
+.project-form-submit {
   flex: none;
   height: 34px;
   padding: 0 18px;
@@ -1886,8 +1880,10 @@ body {
   font-weight: 600;
   cursor: pointer;
 }
-.task-add-btn:hover:not(:disabled) { filter: brightness(1.08); }
-.task-add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.task-add-btn:hover:not(:disabled),
+.project-form-submit:hover:not(:disabled) { filter: brightness(1.08); }
+.task-add-btn:disabled,
+.project-form-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 .history-tab { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
 .history-columns { display: flex; flex-direction: row; gap: 20px; }
 .history-row { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
@@ -2142,18 +2138,33 @@ body {
   position: relative;
   z-index: 1;
 }
-/* Level with the project's header, under the toolbar's row. Once the page
-   scrolls that far it stays in view, 16px from the top. */
+/* Its top level with the project line's buttons and the project list's
+   search box, 11px down the toolbar's row (38px tall, centered in 60), and
+   kept there while the page scrolls; its panels end 16px above the window's
+   foot, like the page's and the list's. The form and Your tasks take their
+   own height and People (public/js/app/side.js) the rest, its list of
+   people scrolling inside it. Only when that leaves no room for one person
+   (a short window, or Your tasks shown in full) does the column itself
+   scroll, by wheel, touch or keyboard, its bar hidden like the panels'
+   lists', so it doesn't take their width. */
 .create-side {
   flex: 0 0 400px;
   position: sticky;
-  top: 16px;
-  margin: var(--toolbar-height) 32px 0 0;
-  max-height: calc(100vh - 32px);
+  top: 11px;
+  margin: 11px 32px 0 0;
+  height: calc(100vh - 11px);
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   padding-bottom: 16px;
+  scrollbar-width: none;
 }
+.create-side::-webkit-scrollbar { display: none; }
 .create-side[hidden] { display: none; }
+#create-project-side,
+.side-tasks { flex: none; }
+#side-root { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.side-people { flex: 1 1 auto; min-height: 204px; } /* its header, the search and one whole person */
 /* Beside the project list (from 1280px, on project pages and /projects),
    none on the page's side: the 32px between them is the list's own, where
    its line to the page runs (ScrollRail in public/js/app/projects.js). */
@@ -2184,4 +2195,3 @@ body {
 @keyframes drawer-in {
   from { transform: translateX(32px); opacity: 0; }
 }
-.drawer-panel .add-form-card { border-color: var(--border); }

@@ -5,7 +5,6 @@ function startEditEntry(entry, source) {
     source === "entries" ? { list: "entries", port: entry.port } : { list: "unassigned", name: entry.name };
   createForm = {
     category: source === "entries" ? entry.category : null,
-    port: source === "entries" ? entry.port : null,
     name: entry.name,
     description: entry.description || "",
     url: entry.url || "",
@@ -46,7 +45,7 @@ function drawerShowing() {
 function openCreateDrawer() {
   if (editingKey) {
     editingKey = null;
-    createForm = { category: null, port: null, name: "", description: "", url: "" };
+    createForm = { category: null, name: "", description: "", url: "" };
   }
   if (!sideFormShown()) createDrawerOpen = true;
   render();
@@ -57,7 +56,7 @@ function openCreateDrawer() {
 // Closing it abandons whatever it held, like the form's Cancel.
 function closeCreateDrawer() {
   editingKey = null;
-  createForm = { category: null, port: null, name: "", description: "", url: "" };
+  createForm = { category: null, name: "", description: "", url: "" };
   createDrawerOpen = false;
   render();
 }
@@ -157,10 +156,7 @@ function buildCreateCategoryDropdown(includeUnassigned) {
       opt.addEventListener("click", (e) => {
         e.stopPropagation();
         createCategoryDropdownOpen = false;
-        if (createForm.category !== cat) {
-          createForm.category = cat;
-          createForm.port = cat === "unassigned" ? "" : nextFreePortInCategory(cat, -1) || "";
-        }
+        createForm.category = cat;
         render();
       });
       menu.appendChild(opt);
@@ -171,89 +167,20 @@ function buildCreateCategoryDropdown(includeUnassigned) {
   return wrap;
 }
 
-const MAX_PORT = 65535;
 // What fits in 3 lines of the project header's description at a 1920px
 // window, where its column is 480px wide.
 const PROJECT_DESCRIPTION_MAX_LENGTH = 230;
 
-// The add/edit form's port field. Digits only, and every way of changing it
-// (typing, arrow keys, the step buttons) stays inside `range`: a typed value
-// outside it is pulled back to the nearest edge when the field is committed
-// (blur/Enter), and a cleared field gets its last good value back.
-function buildPortStepper(range, value, onChange) {
-  const min = range.start;
-  const max = Math.min(range.end, MAX_PORT);
-  let committed = value;
-
-  const wrap = document.createElement("div");
-  wrap.className = "port-stepper";
-
-  const input = document.createElement("input");
-  input.type = "text";
-  input.inputMode = "numeric";
-  input.placeholder = "port";
-  input.value = value;
-
-  const upBtn = buildStepButton("Next port", "M1 5l4-4 4 4", 1);
-  const downBtn = buildStepButton("Previous port", "M1 1l4 4 4-4", -1);
-  const btns = document.createElement("div");
-  btns.className = "port-step-btns";
-  btns.append(upBtn, downBtn);
-  wrap.append(input, btns);
-
-  function buildStepButton(label, path, delta) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "port-step";
-    btn.setAttribute("aria-label", label);
-    btn.innerHTML =
-      `<svg viewBox="0 0 10 6" width="9" height="6" aria-hidden="true">` +
-      `<path d="${path}" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-    btn.addEventListener("mousedown", (e) => e.preventDefault()); // keep focus in the field
-    btn.addEventListener("click", () => step(delta));
-    return btn;
-  }
-
-  function syncButtons() {
-    const n = Number(input.value);
-    downBtn.disabled = input.value !== "" && n <= min;
-    upBtn.disabled = input.value !== "" && n >= max;
-  }
-
-  function commit(n) {
-    committed = String(Math.min(Math.max(n, min), max));
-    input.value = committed;
-    syncButtons();
-    onChange(committed);
-  }
-
-  function step(delta) {
-    commit(input.value ? Number(input.value) + delta : min);
-  }
-
-  input.addEventListener("input", () => {
-    const digits = input.value.replace(/\D/g, "");
-    if (digits !== input.value) input.value = digits;
-    syncButtons();
-    onChange(input.value);
-  });
-  input.addEventListener("change", () => {
-    if (input.value) {
-      commit(Number(input.value));
-    } else {
-      input.value = committed;
-      syncButtons();
-      onChange(committed);
-    }
-  });
-  input.addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-    e.preventDefault();
-    step(e.key === "ArrowUp" ? 1 : -1);
-  });
-
-  syncButtons();
-  return { el: wrap, input };
+// A field like the panels' filters (.panel-filter): its icon, then the input.
+function buildFormField(icon, input) {
+  const field = document.createElement("label");
+  field.className = "form-field";
+  const glyph = document.createElement("span");
+  glyph.className = "form-field-icon";
+  glyph.innerHTML = icon;
+  input.classList.add("form-field-input");
+  field.append(glyph, input);
+  return field;
 }
 
 function buildCreateProjectForm() {
@@ -277,60 +204,69 @@ function buildCreateProjectForm() {
   if (createForm.category === null) {
     createForm.category = CATEGORIES.find((cat) => !isCategoryFull(cat)) || CATEGORIES[0];
   }
-  if (createForm.port === null) {
-    createForm.port = nextFreePortInCategory(createForm.category, -1) || "";
+
+  // The port it gets, shown rather than picked: Dispatch writes it into the
+  // project's .env itself (whatever port the project had), and Switch on its
+  // page moves or swaps it later. A project being edited keeps its own while
+  // it stays in its category; otherwise it's the category's first free port,
+  // worked out afresh each time so one taken meanwhile (in another tab) isn't
+  // used. "" for Unassigned, which has none.
+  function formPort() {
+    if (createForm.category === "unassigned") return "";
+    if (editingSource === "entries" && createForm.category === editingEntry.category) return editingEntry.port;
+    return nextFreePortInCategory(createForm.category, -1) || "";
   }
 
-  const form = document.createElement("div");
-  form.className = "add-form-card";
-
-  const heading = document.createElement("div");
-  heading.className = "create-form-heading";
-  heading.textContent = editingEntry ? `Edit ${editingEntry.name}` : "Add project";
-  form.appendChild(heading);
-
+  // A panel like the page's own (see buildProjectPanel): its title, with the
+  // projects folder as the header's figure (Add only), opening it in File
+  // Explorer. Then the folder name, live site and description, and a row
+  // like the Tasks composer's: the category and port, then Cancel and the
+  // button.
+  const body = document.createElement("div");
+  body.className = "project-form-body";
+  let rootLink = null;
   if (!editingEntry) {
-    const subtitle = document.createElement("button");
-    subtitle.type = "button";
-    subtitle.className = "create-form-subtitle";
-    subtitle.textContent = "loading projects folder…";
-    subtitle.disabled = true;
+    rootLink = document.createElement("button");
+    rootLink.type = "button";
+    rootLink.className = "project-panel-meta project-form-root";
+    rootLink.title = "Open in File Explorer";
+    rootLink.hidden = true;
     fetchProjectsRoot().then((rootPath) => {
-      if (!rootPath) {
-        subtitle.remove();
-        return;
-      }
-      subtitle.textContent = rootPath;
-      subtitle.title = "Open in File Explorer";
-      subtitle.disabled = false;
+      if (!rootPath) return;
+      rootLink.textContent = rootPath;
+      rootLink.hidden = false;
     });
-    subtitle.addEventListener("click", async () => {
+    rootLink.addEventListener("click", async () => {
       try {
         await openProjectsRoot();
       } catch (err) {
         fail(err.message);
       }
     });
-    form.appendChild(subtitle);
   }
+  const form = buildProjectPanel({
+    area: "form",
+    title: editingEntry ? `Edit ${editingEntry.name}` : "Add project",
+    meta: rootLink && { el: rootLink },
+    buildBody: () => body,
+  });
 
   const categoryDropdown = buildCreateCategoryDropdown(!editingEntry);
 
-  const isUnassignedTarget = createForm.category === "unassigned";
-
-  // Unassigned has no port range; the field is hidden then, so any range does.
-  const portRange = isUnassignedTarget ? { start: 1, end: MAX_PORT } : categoryPortRange(createForm.category);
-  const { el: portStepper, input: portInput } = buildPortStepper(portRange, createForm.port, (value) => {
-    createForm.port = value;
-    updateSubmitState();
-  });
-  portStepper.hidden = isUnassignedTarget;
-  if (!isUnassignedTarget) {
-    portStepper.title = `${createForm.category}'s port range: ${formatPortRange(portRange)}`;
+  const port = formPort();
+  const portLabel = document.createElement("span");
+  portLabel.className = "project-form-port";
+  portLabel.hidden = !port;
+  const ownPort = editingSource === "entries" ? editingEntry.port : null;
+  portLabel.textContent = port;
+  if (port) {
+    const category = createForm.category[0].toUpperCase() + createForm.category.slice(1);
+    portLabel.title = `Port ${port}${port === ownPort ? "" : `, ${category}'s first free one`}. Switch on the project's page changes it.`;
   }
 
   const nameInput = document.createElement("input");
-  nameInput.placeholder = "folder name";
+  nameInput.placeholder = "Folder name…";
+  nameInput.setAttribute("aria-label", "Folder name");
   nameInput.value = createForm.name;
 
   const folderListPromise = editingEntry ? Promise.resolve([]) : fetchProjectFolders();
@@ -345,6 +281,7 @@ function buildCreateProjectForm() {
     nameInput.addEventListener("input", () => {
       createForm.name = nameInput.value;
       updateSubmitState();
+      updateCancel();
     });
     const claimedNames = new Set([...entries.map((e) => e.name), ...unassigned.map((e) => e.name)]);
     folderListPromise.then((folders) => {
@@ -362,24 +299,28 @@ function buildCreateProjectForm() {
   // "example.com" isn't flagged as invalid — normalizeSiteUrl adds https://.
   const urlInput = document.createElement("input");
   urlInput.inputMode = "url";
-  urlInput.placeholder = "live site URL (optional)";
+  urlInput.placeholder = "Live site URL (optional)…";
+  urlInput.setAttribute("aria-label", "Live site URL");
   urlInput.value = createForm.url;
   urlInput.addEventListener("input", () => {
     createForm.url = urlInput.value;
+    updateCancel();
   });
 
+  // Its count sits in its own bottom padding, like the Tasks composer's.
   const descInput = document.createElement("textarea");
-  descInput.className = "card-desc";
+  descInput.className = "project-form-desc-input";
   descInput.rows = 3;
   descInput.maxLength = PROJECT_DESCRIPTION_MAX_LENGTH;
-  descInput.placeholder = "description (optional)";
+  descInput.placeholder = "Description (optional)…";
+  descInput.setAttribute("aria-label", "Description");
   descInput.value = createForm.description;
   function autoResizeDescInput() {
     descInput.style.height = "auto";
-    descInput.style.height = `${descInput.scrollHeight}px`;
+    descInput.style.height = `${descInput.scrollHeight + descInput.offsetHeight - descInput.clientHeight}px`;
   }
-  const descCounter = document.createElement("div");
-  descCounter.className = "desc-counter";
+  const descCounter = document.createElement("span");
+  descCounter.className = "project-form-counter";
   function updateDescCounter() {
     const over = descInput.value.length > descInput.maxLength;
     descCounter.textContent = `${descInput.value.length}/${descInput.maxLength}`;
@@ -391,12 +332,16 @@ function buildCreateProjectForm() {
     autoResizeDescInput();
     updateDescCounter();
     updateSubmitState();
+    updateCancel();
   });
   requestAnimationFrame(autoResizeDescInput);
+  const descField = document.createElement("div");
+  descField.className = "project-form-desc";
+  descField.append(descInput, descCounter);
 
   const createBtn = document.createElement("button");
-  createBtn.className = "create-btn";
-  createBtn.textContent = editingEntry ? "Save changes" : "Add project";
+  createBtn.className = "project-form-submit";
+  createBtn.textContent = editingEntry ? "Save" : "Add project";
 
   async function persistWithSpinner() {
     const originalLabel = createBtn.innerHTML;
@@ -412,7 +357,7 @@ function buildCreateProjectForm() {
 
   function updateSubmitState() {
     const categoryOk = createForm.category !== null && !isCategoryFullExcluding(createForm.category, excludePort);
-    const portOk = createForm.category === "unassigned" || /^\d+$/.test(portInput.value.trim());
+    const portOk = createForm.category === "unassigned" || !!port;
     const descOk = descInput.value.length <= descInput.maxLength;
     createBtn.disabled = !nameInput.value.trim() || !portOk || !categoryOk || !descOk;
   }
@@ -420,17 +365,25 @@ function buildCreateProjectForm() {
 
   const cancelBtn = document.createElement("button");
   cancelBtn.type = "button";
-  cancelBtn.className = "cancel-btn";
+  cancelBtn.className = "project-form-cancel";
   cancelBtn.textContent = "Cancel";
   cancelBtn.addEventListener("click", () => {
     editingKey = null;
-    createForm = { category: null, port: null, name: "", description: "", url: "" };
+    createForm = { category: null, name: "", description: "", url: "" };
     createDrawerOpen = false;
     render();
   });
+  // Cancel clears the form, or leaves the edit or the drawer. The side
+  // column's Add form stays open, so there it only shows once something's
+  // typed: until then there's nothing for it to do.
+  const cancelAlways = !!editingEntry || !sideFormShown();
+  function updateCancel() {
+    cancelBtn.hidden = !cancelAlways && !(nameInput.value.trim() || urlInput.value.trim() || descInput.value.trim());
+  }
+  updateCancel();
 
-  const actions = document.createElement("div");
-  actions.className = "add-form-actions";
+  const footer = document.createElement("div");
+  footer.className = "project-form-footer";
 
   function fail(message) {
     const existing = form.querySelector(".card-error");
@@ -438,7 +391,7 @@ function buildCreateProjectForm() {
     const err = document.createElement("div");
     err.className = "card-error";
     err.textContent = message;
-    form.insertBefore(err, actions);
+    body.insertBefore(err, footer);
   }
 
   createBtn.addEventListener("click", async () => {
@@ -446,17 +399,12 @@ function buildCreateProjectForm() {
     if (existingFail) existingFail.remove();
 
     const category = createForm.category;
-    const port = portInput.value.trim();
+    const port = formPort();
     const url = normalizeSiteUrl(urlInput.value);
     if (url === null) return fail("Live site must be a web address, like example.com or https://example.com");
 
     if (editingSource === "entries") {
-      if (!/^\d+$/.test(port)) return fail("Port must be a positive integer");
-      const range = categoryPortRange(category);
-      const portNum = Number(port);
-      if (portNum < range.start || portNum > range.end) {
-        return fail(`Port must be within ${category}'s range (${formatPortRange(range)})`);
-      }
+      if (!port) return fail(`${category} has no free port left`);
       const selfIndex = entries.findIndex((e) => e.port === editingKey.port);
       if (selfIndex === -1) {
         editingKey = null;
@@ -476,19 +424,14 @@ function buildCreateProjectForm() {
         return;
       }
       editingKey = null;
-      createForm = { category: null, port: null, name: "", description: "", url: "" };
+      createForm = { category: null, name: "", description: "", url: "" };
       createDrawerOpen = false;
       render();
       return;
     }
 
     if (editingSource === "unassigned") {
-      if (!/^\d+$/.test(port)) return fail("Port must be a positive integer");
-      const range = categoryPortRange(category);
-      const portNum = Number(port);
-      if (portNum < range.start || portNum > range.end) {
-        return fail(`Port must be within ${category}'s range (${formatPortRange(range)})`);
-      }
+      if (!port) return fail(`${category} has no free port left`);
       const unassignedIndex = unassigned.findIndex((e) => e.name === editingKey.name);
       if (unassignedIndex === -1) {
         editingKey = null;
@@ -508,7 +451,7 @@ function buildCreateProjectForm() {
         return;
       }
       editingKey = null;
-      createForm = { category: null, port: null, name: "", description: "", url: "" };
+      createForm = { category: null, name: "", description: "", url: "" };
       createDrawerOpen = false;
       render();
       return;
@@ -532,18 +475,13 @@ function buildCreateProjectForm() {
         unassigned.pop();
         return;
       }
-      createForm = { category: null, port: null, name: "", description: "", url: "" };
+      createForm = { category: null, name: "", description: "", url: "" };
       createDrawerOpen = false;
       render();
       return;
     }
 
-    if (!/^\d+$/.test(port)) return fail("Port must be a positive integer");
-    const range = categoryPortRange(category);
-    const portNum = Number(port);
-    if (portNum < range.start || portNum > range.end) {
-      return fail(`Port must be within ${category}'s range (${formatPortRange(range)})`);
-    }
+    if (!port) return fail(`${category} has no free port left`);
     if (portConflict(port, -1)) return fail(`Port ${port} is already in use`);
     if (isCategoryFull(category)) return fail(`${category} is already at its limit`);
     if (!(await confirmPortsFree([port]))) return;
@@ -554,25 +492,18 @@ function buildCreateProjectForm() {
       entries.pop();
       return;
     }
-    createForm = { category: null, port: null, name: "", description: "", url: "" };
+    createForm = { category: null, name: "", description: "", url: "" };
     createDrawerOpen = false;
     render();
   });
 
-  const topRow = document.createElement("div");
-  topRow.className = "add-form-row";
-  topRow.appendChild(categoryDropdown);
-  topRow.appendChild(portStepper);
+  const actions = document.createElement("div");
+  actions.className = "project-form-actions";
+  actions.append(cancelBtn, createBtn);
+  footer.append(categoryDropdown, portLabel, actions);
 
-  form.appendChild(topRow);
-  form.appendChild(nameInput);
-  form.appendChild(datalist);
-  form.appendChild(urlInput);
-  form.appendChild(descInput);
-  form.appendChild(descCounter);
-  if (editingEntry) form.appendChild(buildFinishedField());
-  actions.appendChild(cancelBtn);
-  actions.appendChild(createBtn);
-  form.appendChild(actions);
+  body.append(buildFormField(ICON_FOLDER, nameInput), datalist, buildFormField(ICON_GLOBE, urlInput), descField);
+  if (editingEntry) body.appendChild(buildFinishedField());
+  body.appendChild(footer);
   return form;
 }

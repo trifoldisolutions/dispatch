@@ -8,7 +8,7 @@ const { WebSocketServer } = require("ws");
 //   { type: "runs", runs: { name: { status, error, twError } } }  what Dispatch started
 //   { type: "presence", online: [userId, ...] }  who has Dispatch open
 //   { type: "registry" }  projects added, moved or removed: reload them
-//   { type: "tasks" | "journal", project }  that project's tasks or journal changed
+//   { type: "tasks" | "journal" | "staff", project }  that project's tasks, journal or staff changed
 //
 // Each page gets ports, runs and presence as soon as it connects. Only logged
 // in users on a Dispatch page (same origin) can connect. The pages fall back

@@ -36,7 +36,7 @@ function buildProjectStaff(entry) {
 // is as wide as its content, side by side on one row that scrolls sideways
 // like the staff's when a project has more than fit. The row's place is
 // always kept, so every project's header has the same shape: with no client
-// it holds a placeholder saying so, and while the staff loads (or failed
+// it holds a hint, and while the staff loads (or failed
 // to, which the staff above says) it stays blank.
 function buildProjectClients(entry) {
   const state = staffCache[entry.name];
@@ -45,7 +45,7 @@ function buildProjectClients(entry) {
   list.dataset.scrollKey = "clients"; // see renderProjectPage
   if (!state || state.error) return list;
   if (!state.clients || state.clients.length === 0) {
-    list.appendChild(buildNoClientRow(entry));
+    list.appendChild(buildNoClientRow());
     return list;
   }
   scrollSidewaysOnWheel(list);
@@ -54,27 +54,14 @@ function buildProjectClients(entry) {
 }
 
 // A client box's outline with no one in it, dashed like the staff's own empty
-// state. Dispatch's own project never has a client, so it says why instead.
-function buildNoClientRow(entry) {
+// state, around a one-line hint that reads the same on every project.
+function buildNoClientRow() {
   const row = document.createElement("div");
   row.className = "client-row empty";
-  const avatar = document.createElement("span");
-  avatar.className = "staff-avatar";
-  const text = document.createElement("div");
-  text.className = "client-text";
-  const title = document.createElement("span");
-  title.className = "client-name";
   const hint = document.createElement("span");
-  hint.className = "client-projects";
-  if (entry.name === SELF_PROJECT.name) {
-    title.textContent = "No client";
-    hint.textContent = "Dispatch is the studio's own project";
-  } else {
-    title.textContent = "No client yet";
-    hint.textContent = "Its client shows here once linked";
-  }
-  text.append(title, hint);
-  row.append(avatar, text);
+  hint.className = "client-hint";
+  hint.textContent = "Clients linked to this project show here";
+  row.appendChild(hint);
   return row;
 }
 
@@ -109,7 +96,7 @@ function fitStaffNames(root) {
 }
 
 // A person's round avatar: their picture when they have one (see people.js
-// beside server.js), otherwise the plain circle.
+// beside server.js), otherwise the user icon.
 function buildAvatar(person) {
   const avatar = document.createElement("span");
   avatar.className = "staff-avatar";
@@ -118,6 +105,8 @@ function buildAvatar(person) {
     img.src = person.avatar;
     img.alt = "";
     avatar.appendChild(img);
+  } else {
+    avatar.insertAdjacentHTML("beforeend", ICON_USER);
   }
   return avatar;
 }

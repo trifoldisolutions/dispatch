@@ -256,7 +256,7 @@ function liveConnected() {
   return !!(window.DispatchLive && window.DispatchLive.connected);
 }
 
-// Tells Home, Projects and the palette (public/js/app) the latest
+// Tells the project list, the side column and the palette (public/js/app) the latest
 // listening/running state, after either a poll or /live delivered it.
 function announceStatus() {
   document.dispatchEvent(
@@ -326,19 +326,28 @@ async function confirmPortsFree(ports) {
   );
 }
 
-// /live says a project's tasks or journal changed (an agent's journal entry,
-// another tab's task). If that panel's data is loaded, refetch it, and redraw
-// only when it differs, so this page's own change coming back is a no-op.
+// /live says a project's tasks, journal or staff changed (an agent's journal
+// entry, another tab's task, someone added from People). If that data is
+// loaded, refetch it, and redraw only when it differs, so this page's own
+// change coming back is a no-op. Read through functions, since Refresh may
+// reassign a cache meanwhile.
+const LIVE_PROJECT_DATA = {
+  tasks: { cache: () => taskCache, fetch: (name) => fetchTasks(name) },
+  journal: { cache: () => journalCache, fetch: (name) => fetchJournal(name) },
+  staff: { cache: () => staffCache, fetch: (name) => fetchStaff(name) },
+};
+
 async function projectDataChanged(name, kind) {
-  const cache = kind === "tasks" ? taskCache : kind === "journal" ? journalCache : null;
+  const source = LIVE_PROJECT_DATA[kind];
+  const cache = source && source.cache();
   if (!cache || !cache[name] || cache[name].error) return;
   let fresh;
   try {
-    fresh = await (kind === "tasks" ? fetchTasks(name) : fetchJournal(name));
+    fresh = await source.fetch(name);
   } catch {
     return; // the panel keeps what it had
   }
-  const current = kind === "tasks" ? taskCache : journalCache; // reassigned by Refresh meanwhile?
+  const current = source.cache();
   if (current[name] && JSON.stringify(current[name]) === JSON.stringify(fresh)) return;
   current[name] = fresh;
   if (currentProjectName === name) render();

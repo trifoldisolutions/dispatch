@@ -110,6 +110,14 @@ const ICON_USERS =
   '<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" ' +
   'd="M21 19.75c0-2.09-1.67-5.068-4-5.727m-2 5.727c0-2.651-2.686-6-6-6s-6 3.349-6 6m9-12.5a3 3 0 1 1-6 0a3 3 0 0 1 6 0m3 3a3 3 0 1 0 0-6" />' +
   "</svg>";
+// mynaui:user — https://icon-sets.iconify.design/mynaui/user/ (MIT). An
+// avatar's stand-in when the person has no picture (see buildAvatar), drawn
+// at its own 1.5 stroke since it's shown large.
+const ICON_USER =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">' +
+  '<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" ' +
+  'd="M15 7.5a3 3 0 1 1-6 0a3 3 0 0 1 6 0m4.5 13c-.475-9.333-14.525-9.333-15 0" />' +
+  "</svg>";
 // mynaui:code-circle — https://icon-sets.iconify.design/mynaui/code-circle/ (MIT)
 const ICON_VSCODE =
   '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">' +
@@ -135,6 +143,12 @@ const ICON_SWITCH =
   '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">' +
   '<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" ' +
   'd="M4 8h15m0 0l-4-4m4 4l-4 4M20 16H5m0 0l4-4m-4 4l4 4" />' +
+  "</svg>";
+// lucide:globe — https://lucide.dev/icons/globe (ISC)
+const ICON_GLOBE =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">' +
+  '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">' +
+  '<circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20a14.5 14.5 0 0 0 0-20M2 12h20" /></g>' +
   "</svg>";
 // mynaui:calendar — https://icon-sets.iconify.design/mynaui/calendar/ (MIT)
 const ICON_CALENDAR =
