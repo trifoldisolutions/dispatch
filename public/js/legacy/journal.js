@@ -119,8 +119,9 @@ function buildJournalPanel(entry, panel) {
 // files they reported. `terms` are the filter's search words, marked
 // wherever they turn up. Each entry's time sits under its text: for one the
 // dashboard inserted, the exact insert time (`insertedAt`, from the audit log
-// in server.js), to the second; for a hand-written one, the HH:MM it was
-// written with. Their tooltips say which it is.
+// in server.js), to the second, and who inserted it (`insertedBy`); for a
+// hand-written one, the HH:MM it was written with. Their tooltips say which
+// it is.
 function buildJournalDay(name, day, terms) {
   const dayEl = document.createElement("div");
   dayEl.className = "journal-day";
@@ -158,7 +159,7 @@ function buildJournalEntryTime(date, item) {
   el.className = "journal-entry-time";
   if (item.insertedAt) {
     const inserted = new Date(item.insertedAt);
-    el.textContent = inserted.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" });
+    el.textContent = withAuthor(inserted.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" }), item.insertedBy);
     el.title = `Inserted ${inserted.toLocaleString()}`;
   } else if (item.time) {
     el.textContent = new Date(`${date}T${item.time}`).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });

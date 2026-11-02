@@ -538,7 +538,7 @@ function buildTaskRow(entry, task, panel) {
 
   // Two meta rows: the task's dates on top — added, due, then when it was
   // archived or else marked done (left out for tasks finished before those
-  // stamps existed) — and its ID badge and tags under them.
+  // stamps existed), each with who did it — and its ID badge and tags under them.
   const dates = document.createElement("div");
   dates.className = "task-meta task-dates";
   const addDate = (text, className) => {
@@ -553,10 +553,10 @@ function buildTaskRow(entry, task, panel) {
     part.textContent = text;
     dates.appendChild(part);
   };
-  addDate(`Added ${formatTimestamp(task.createdAt)}`);
+  addDate(`Added ${withAuthor(formatTimestamp(task.createdAt), task.createdBy)}`);
   if (task.dueDate) addDate(`Due ${formatDueDate(task.dueDate)}`, "task-due" + (isTaskOverdue(task) ? " overdue" : ""));
-  if (task.archived && task.archivedAt) addDate(`Archived ${formatTimestamp(task.archivedAt)}`);
-  else if (task.done && task.doneAt) addDate(`Marked as done ${formatTimestamp(task.doneAt)}`);
+  if (task.archived && task.archivedAt) addDate(`Archived ${withAuthor(formatTimestamp(task.archivedAt), task.archivedBy)}`);
+  else if (task.done && task.doneAt) addDate(`Marked as done ${withAuthor(formatTimestamp(task.doneAt), task.doneBy)}`);
   main.appendChild(dates);
 
   const meta = document.createElement("div");

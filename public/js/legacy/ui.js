@@ -34,6 +34,12 @@ function formatTimestamp(iso) {
   });
 }
 
+// "Nov 1, 2026, 3:28 PM by Michael H.": a stamp's time and who did it (see
+// actorOf in server.js), or just the time for one from before logins.
+function withAuthor(time, person) {
+  return person ? `${time} by ${person.name}` : time;
+}
+
 function capitalize(text) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }

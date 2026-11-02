@@ -498,6 +498,26 @@ function requireApiLogin(req, res, next) {
   next();
 }
 
+// Who a task or journal change is filed under: the logged-in user, named as
+// they're shown across Dispatch and saved with the change, so it outlasts a
+// deleted account. The older routes don't require a login yet, and the requests
+// that come without one are agents', posting as each project's AGENTS.md says.
+// Claude Code is the one agent with an account, and its X-Agent-Session header
+// is saved, though not shown, to tell its sessions apart. Without that account
+// (or with the database down, which these file-based routes otherwise don't
+// need) they're just "Agent".
+const AGENT_ACCOUNT_EMAIL = "claude@dispatch.test";
+const AGENT_SESSION_RE = /^[\w-]{1,64}$/;
+
+async function actorOf(req) {
+  if (req.user) return { id: String(req.user._id), name: displayName(req.user.name) };
+  const account = User.db.readyState === 1 ? await User.findOne({ email: AGENT_ACCOUNT_EMAIL }, { name: 1 }).lean() : null;
+  const actor = account ? { id: String(account._id), name: displayName(account.name) } : { id: null, name: "Agent" };
+  const session = req.get("x-agent-session");
+  if (session && AGENT_SESSION_RE.test(session)) actor.session = session;
+  return actor;
+}
+
 // [{ project (lean), role }] for the user: the projects they hold a
 // membership on (Dispatch's own is in the database too). None for an admin,
 // who oversees the projects rather than working on any, Dispatch's included.
@@ -1444,7 +1464,8 @@ const JOURNAL_FILE_TEMPLATE = "# Project Journal\n\n<!--\nEntry template:\n\n## 
 
 // Beside each journal, an append-only log with one JSON line per entry that
 // appendJournalEntry inserts: the exact moment it went in (`insertedAt`, ISO
-// 8601 UTC), the date and time it was filed under, and its text and files.
+// 8601 UTC), who put it there (`insertedBy`, see actorOf; none on records from
+// before logins), the date and time it was filed under, and its text and files.
 // journal.md is hand-editable and rewritten whole on every insert, so its
 // HH:MM alone can't show when an entry really arrived; this file is only ever
 // appended to. Hand-written entries have no record in it.
@@ -1452,14 +1473,15 @@ function journalAuditPath(journalPath) {
   return path.join(path.dirname(journalPath), "journal.audit.jsonl");
 }
 
-// Gives each parsed entry its `insertedAt` from the audit log, matched on the
-// date, time and text it was filed with (duplicates oldest first). An entry
-// written by hand, or edited since it went in, matches no record and gets none.
+// Gives each parsed entry its `insertedAt` and `insertedBy` from the audit log,
+// matched on the date, time and text it was filed with (duplicates oldest
+// first). An entry written by hand, or edited since it went in, matches no
+// record and gets neither.
 function withJournalAudit(days, journalPath) {
   const auditPath = journalAuditPath(journalPath);
   if (!fs.existsSync(auditPath)) return days;
   const keyOf = (date, time, content) => JSON.stringify([date, time, content]);
-  const insertedAtByKey = new Map();
+  const recordsByKey = new Map();
   for (const line of fs.readFileSync(auditPath, "utf8").split(/\r?\n/)) {
     if (!line.trim()) continue;
     let record;
@@ -1469,13 +1491,15 @@ function withJournalAudit(days, journalPath) {
       continue; // a torn or hand-mangled line shouldn't hide the rest
     }
     const key = keyOf(record.date, record.time, record.content);
-    if (!insertedAtByKey.has(key)) insertedAtByKey.set(key, []);
-    insertedAtByKey.get(key).push(record.insertedAt);
+    if (!recordsByKey.has(key)) recordsByKey.set(key, []);
+    recordsByKey.get(key).push(record);
   }
   for (const day of days) {
     for (const entry of day.entries) {
-      const queue = insertedAtByKey.get(keyOf(day.date, entry.time, entry.content));
-      if (queue && queue.length > 0) entry.insertedAt = queue.shift();
+      const record = recordsByKey.get(keyOf(day.date, entry.time, entry.content))?.shift();
+      if (!record) continue;
+      entry.insertedAt = record.insertedAt;
+      if (record.insertedBy) entry.insertedBy = record.insertedBy;
     }
   }
   return days;
@@ -1488,9 +1512,9 @@ function withJournalAudit(days, journalPath) {
 // entries elsewhere in the file (including odd/nested formatting) survive
 // byte-for-byte. `files` (see normalizeJournalFiles), when given, goes under
 // the note as one sub-bullet per kind. Each insert is recorded in the audit
-// log (journalAuditPath) first, so a failed audit write leaves the journal
-// untouched and the request safe to retry.
-function appendJournalEntry(journalPath, content, files = null) {
+// log (journalAuditPath) first, with who made it (see actorOf), so a failed
+// audit write leaves the journal untouched and the request safe to retry.
+function appendJournalEntry(journalPath, content, insertedBy, files = null) {
   let text = fs.existsSync(journalPath) ? fs.readFileSync(journalPath, "utf8") : JOURNAL_FILE_TEMPLATE;
   if (!text.endsWith("\n")) text += "\n";
   // One clock reading for both, so an entry posted at midnight can't be filed
@@ -1523,7 +1547,7 @@ function appendJournalEntry(journalPath, content, files = null) {
   }
 
   fs.mkdirSync(path.dirname(journalPath), { recursive: true });
-  const record = { insertedAt: now.toISOString(), date, time, content };
+  const record = { insertedAt: now.toISOString(), insertedBy, date, time, content };
   if (files) record.files = files;
   fs.appendFileSync(journalAuditPath(journalPath), JSON.stringify(record) + "\n");
   fs.writeFileSync(journalPath, updated);
@@ -1544,7 +1568,7 @@ app.get("/api/project-folders/:name/journal", (req, res) => {
   }
 });
 
-app.post("/api/project-folders/:name/journal", (req, res) => {
+app.post("/api/project-folders/:name/journal", async (req, res) => {
   const dir = resolveProjectDir(req.params.name);
   if (!dir || !fs.existsSync(dir)) {
     return res.status(404).json({ error: `project folder "${req.params.name}" not found` });
@@ -1558,7 +1582,7 @@ app.post("/api/project-folders/:name/journal", (req, res) => {
   if (error) return res.status(400).json({ error });
   try {
     const journalPath = findJournalPath(dir);
-    const updated = appendJournalEntry(journalPath, content, files);
+    const updated = appendJournalEntry(journalPath, content, await actorOf(req), files);
     res.json({ days: withJournalAudit(parseJournal(updated), journalPath) });
     live.projectChanged(req.params.name, "journal");
   } catch (err) {
@@ -1692,7 +1716,7 @@ app.get("/api/project-folders/:name/tasks", (req, res) => {
   }
 });
 
-app.post("/api/project-folders/:name/tasks", (req, res) => {
+app.post("/api/project-folders/:name/tasks", async (req, res) => {
   const dir = resolveProjectDir(req.params.name);
   if (!dir || !fs.existsSync(dir)) {
     return res.status(404).json({ error: `project folder "${req.params.name}" not found` });
@@ -1705,6 +1729,7 @@ app.post("/api/project-folders/:name/tasks", (req, res) => {
   }
   const taskTags = normalizeTagList(req.body.tags);
   try {
+    const by = await actorOf(req); // before the read: a wait between it and the write could lose another request's change
     const tasksPath = findTasksPath(dir);
     const data = readTasks(tasksPath);
     const now = new Date().toISOString();
@@ -1716,12 +1741,16 @@ app.post("/api/project-folders/:name/tasks", (req, res) => {
       description: text.description || "",
       done: false,
       doneAt: null,
+      doneBy: null,
       archived: false,
       archivedAt: null,
+      archivedBy: null,
       dueDate: dueDateRaw || null,
       tags: taskTags,
       createdAt: now,
+      createdBy: by,
       updatedAt: now,
+      updatedBy: by,
     });
     writeTasks(tasksPath, data);
     res.json({ tasks: data.tasks, tags: data.tags });
@@ -1737,15 +1766,17 @@ app.post("/api/project-folders/:name/tasks", (req, res) => {
 // date, and `tags` replaces its tag list wholesale (any new tag name in it is
 // merged onto the project's known tags) — any subset can be sent at once, as
 // the composer does when saving an edit. Flipping `done`/`archived` on stamps
-// `doneAt`/`archivedAt` with the time, and flipping it off clears it; sending
-// the value a task already has leaves its stamp alone. Tasks done or archived
-// before these stamps existed have none.
-app.patch("/api/project-folders/:name/tasks/:id", (req, res) => {
+// `doneAt`/`archivedAt` with the time and `doneBy`/`archivedBy` with who did it
+// (see actorOf), and flipping it off clears both; sending the value a task
+// already has leaves its stamps alone. Tasks done or archived before these
+// stamps existed have none, and tasks from before logins have no `createdBy`.
+app.patch("/api/project-folders/:name/tasks/:id", async (req, res) => {
   const dir = resolveProjectDir(req.params.name);
   if (!dir || !fs.existsSync(dir)) {
     return res.status(404).json({ error: `project folder "${req.params.name}" not found` });
   }
   try {
+    const by = await actorOf(req); // before the read, as in the POST above
     const tasksPath = findTasksPath(dir);
     const data = readTasks(tasksPath);
     const id = req.params.id.toUpperCase(); // codes are always stored/shown uppercase; matching is case-insensitive
@@ -1773,12 +1804,15 @@ app.patch("/api/project-folders/:name/tasks/:id", (req, res) => {
     if (typeof req.body.done === "boolean" && req.body.done !== task.done) {
       task.done = req.body.done;
       task.doneAt = task.done ? now : null;
+      task.doneBy = task.done ? by : null;
     }
     if (typeof req.body.archived === "boolean" && req.body.archived !== task.archived) {
       task.archived = req.body.archived;
       task.archivedAt = task.archived ? now : null;
+      task.archivedBy = task.archived ? by : null;
     }
     task.updatedAt = now;
+    task.updatedBy = by;
     writeTasks(tasksPath, data);
     res.json({ tasks: data.tasks, tags: data.tags });
     live.projectChanged(req.params.name, "tasks");
@@ -1826,7 +1860,7 @@ function seedProjectFolder(dir, name) {
   }
 }
 
-app.post("/api/project-folders/:name", (req, res) => {
+app.post("/api/project-folders/:name", async (req, res) => {
   const dir = resolveProjectDir(req.params.name);
   if (!dir) return res.status(400).json({ error: `invalid project name "${req.params.name}"` });
   if (RESERVED_NAMES.has(req.params.name.toLowerCase())) {
@@ -1834,9 +1868,10 @@ app.post("/api/project-folders/:name", (req, res) => {
   }
   if (fs.existsSync(dir)) return res.status(409).json({ error: `"${req.params.name}" already exists` });
   try {
+    const by = await actorOf(req);
     fs.mkdirSync(dir);
     seedProjectFolder(dir, req.params.name);
-    appendJournalEntry(findJournalPath(dir), "Project was created");
+    appendJournalEntry(findJournalPath(dir), "Project was created", by);
     res.json({ ok: true });
     live.registryChanged();
   } catch (err) {
