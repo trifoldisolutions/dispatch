@@ -13,7 +13,7 @@ const live = require("../services/live");
 const { isOnline } = require("../services/auth");
 const { INVITE_MS, RESET_MS, USER_FIELDS, describeUsers, parseAccount, passwordLink, changed, projectNamesOf } = require("../services/accounts");
 const { avatarUrl, moveAvatar, displayName, STAFF_ROLES, staffByProject, projectClients, actorOf, projectsForUser, staffProjectDirs } = require("../services/people");
-const { readRegistry, writeRegistry, listProjectFolders, collectNames, validateRegistry, checkProjectTemplate, seedProjectFolder, findAssignedEntry, syncEnvPort, syncAllEnvPorts, resolveProjectDir } = require("../services/registry");
+const { readRegistry, writeRegistry, listProjectFolders, collectNames, validateRegistry, checkProjectTemplate, seedProjectFolder, hasLayoutRules, findAssignedEntry, syncEnvPort, syncAllEnvPorts, resolveProjectDir } = require("../services/registry");
 const { JOURNAL_NOTE_MAX_LENGTH, findJournalPath, normalizeJournalFiles, parseJournal, todayDateOnly, addDaysDateOnly, withJournalAudit, appendJournalEntry, readProjectJournalSafe } = require("../services/journal");
 const { DATE_ONLY_RE, findTasksPath, readTasks, parseTaskText, writeTasks, normalizeTagList, mergeKnownTags, generateTaskCode, readProjectTasksSafe, taskFigures } = require("../services/tasks");
 const { ACTIVITY_DAYS, execAsync, recentCommits, parseGitPorcelain, COMMIT_MESSAGE_RELATIVE, readPendingCommitMessage, GIT_LOG_FORMAT, parseGitLogLine, formatAutoCommitTimestamp } = require("../services/git");
@@ -202,6 +202,7 @@ projectRoutes.get("/me/projects", requireApiLogin, async (req, res) => {
         role,
         staff: staff.get(String(project._id)) || [],
         hasFolder,
+        hasLayoutRules: !dir || hasLayoutRules(dir),
         tasks: taskFigures(dir ? readProjectTasksSafe(dir) : [], today),
         lastActivity: lastEntry ? { date: lastDay.date, time: lastEntry.time, content: lastEntry.content } : null,
       };

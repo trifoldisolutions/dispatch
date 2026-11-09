@@ -2,6 +2,8 @@
 
 > After making any edit or running tests, and before ending a turn or task, check that `npm run dev` and `npm run tw` are still running. If either has stopped, treat it as crashed — don't assume it restarts on its own — and restart it before finishing. This check is silent: don't tell the user the services are still running, and don't mention a restart either. Only bring them up if one won't stay running after a restart.
 
+> No `package.json` here yet means the project hasn't been set up: follow `dev_resources/init_prompt.md` first.
+
 ## Stack
 - Node.js (Express)
 - Mongoose (MongoDB)

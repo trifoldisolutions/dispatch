@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const Project = require("../models/Project");
 const Membership = require("../models/Membership");
-const { PROJECTS_ROOT, SELF_PROJECT, RESERVED_NAMES, CATEGORIES, CATEGORY_LIMITS, PROJECT_DESCRIPTION_MAX_LENGTH, BASE_PORT, PROJECT_TEMPLATE_DIR, PROJECT_TEMPLATE_FILES } = require("../config/projects");
+const { PROJECTS_ROOT, SELF_PROJECT, SAMPLE_PROJECT_FOLDER, RESERVED_NAMES, CATEGORIES, CATEGORY_LIMITS, PROJECT_DESCRIPTION_MAX_LENGTH, BASE_PORT, PROJECT_TEMPLATE_DIR, PROJECT_TEMPLATE_FILES, PROJECTS_ROOT_TEMPLATE_DIR, PROJECTS_ROOT_FILES } = require("../config/projects");
 
 const PROJECT_STATUSES = Project.schema.path("status").enumValues;
 
@@ -76,7 +76,7 @@ async function writeRegistry(data) {
 function listProjectFolders() {
   return fs
     .readdirSync(PROJECTS_ROOT, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+    .filter((d) => d.isDirectory() && !d.name.startsWith(".") && d.name !== SAMPLE_PROJECT_FOLDER)
     .map((d) => d.name);
 }
 
@@ -246,6 +246,41 @@ function seedProjectFolder(dir, name) {
   }
 }
 
+// Whether a project's AGENTS.md has the layout section every project needs.
+// Seeding leaves a folder's own AGENTS.md alone, so this is how one without the
+// section gets noticed. Dispatch's own words it differently, hence any case.
+function hasLayoutRules(dir) {
+  try {
+    return /file and folder structure/i.test(fs.readFileSync(path.join(dir, "AGENTS.md"), "utf8"));
+  } catch {
+    return false; // no AGENTS.md at all
+  }
+}
+
+// Keeps the standard where someone starting a project will see it: the short
+// AGENTS.md above the project folders, and new_project_sample/, which holds the
+// template as it stands, placeholders included. Git keeps the real versions in
+// config/, so these are rewritten whenever they differ, and a change there
+// reaches them the next time Dispatch starts. A failure is only logged: Dispatch
+// runs fine without them, and creating a project has its own check.
+function syncProjectsRoot() {
+  const files = [
+    ...PROJECTS_ROOT_FILES.map(({ file, dest }) => ({ source: path.join(PROJECTS_ROOT_TEMPLATE_DIR, file), dest })),
+    ...PROJECT_TEMPLATE_FILES.map(({ file, dest }) => ({ source: path.join(PROJECT_TEMPLATE_DIR, file), dest: path.join(SAMPLE_PROJECT_FOLDER, dest) })),
+  ];
+  for (const { source, dest } of files) {
+    try {
+      const content = fs.readFileSync(source, "utf8");
+      const target = path.join(PROJECTS_ROOT, dest);
+      if (fs.existsSync(target) && fs.readFileSync(target, "utf8") === content) continue;
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, content);
+    } catch (err) {
+      console.error(`failed to update ${dest} in the projects folder: ${err.message}`);
+    }
+  }
+}
+
 // Finds which category/port a project name is currently assigned to (not
 // "unassigned" — those have no port to serve on).
 async function findAssignedEntry(name) {
@@ -311,6 +346,8 @@ module.exports = {
   validateRegistry,
   checkProjectTemplate,
   seedProjectFolder,
+  hasLayoutRules,
+  syncProjectsRoot,
   findAssignedEntry,
   syncEnvPort,
   syncAllEnvPorts,

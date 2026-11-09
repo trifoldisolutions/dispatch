@@ -11,6 +11,7 @@ const appRoutes = require("./routes/app");
 const apiRoutes = require("./routes/api");
 const live = require("./services/live");
 const { avatarUrl } = require("./services/people");
+const { syncProjectsRoot } = require("./services/registry");
 
 const app = express();
 
@@ -62,6 +63,8 @@ app.use(answerOptions([vendor, ...facades]));
 
 // The left menu's account button shows the user's picture when there is one.
 app.locals.avatarUrl = avatarUrl;
+
+syncProjectsRoot();
 
 const server = app.listen(PORT, () => {
   const local = `http://localhost:${PORT}`;

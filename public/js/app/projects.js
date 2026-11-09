@@ -188,6 +188,18 @@ function FoldersNotice() {
   </div>`;
 }
 
+// Projects whose AGENTS.md has no File and Folder Structure section. A folder
+// that came with its own AGENTS.md keeps it when it's added, so agents working
+// there wouldn't know the standard layout.
+function LayoutNotice() {
+  const missing = store.myProjects.value.list.filter((project) => !project.hasLayoutRules).map((project) => project.name);
+  if (missing.length === 0) return null;
+  return html`<div title="Copy the File and Folder Structure section from new_project_sample/AGENTS.md, worded for the project."
+    class="mt-3 shrink-0 rounded-md border border-accent/45 bg-accent/8 px-3 py-2 text-[12px]">
+    No folder structure rules in AGENTS.md: ${missing.join(", ")}
+  </div>`;
+}
+
 // "today", "yesterday", "on Tuesday", "on Jul 17".
 function lastEntryLabel(date, today) {
   const label = dayLabel(date, today);
@@ -415,6 +427,7 @@ function ListBody({ rail }) {
       <button type="button" class="font-medium text-accent hover:underline" onClick=${() => ((query.value = ""), pickShow("all"))}>Show all</button>
     </div>`}
     <${FoldersNotice} />
+    <${LayoutNotice} />
     ${error &&
     html`<p class="mt-3 shrink-0 rounded-md border border-danger/50 bg-danger/10 px-3 py-2 text-[12px] text-danger">
       Couldn't load: ${error} <button type="button" class="ml-1 underline" onClick=${() => store.loadProjects()}>Try again</button></p>`}
