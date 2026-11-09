@@ -46,10 +46,13 @@ function buildTasksPanel(entry, panel) {
     );
   } else {
     const visible = tasksForStatusFilter(state.tasks);
-    // Re-fills just the list, not the whole page — typing in the filter's
-    // search box calls this on every keystroke, and a full render() would
-    // rebuild (and so unfocus) that very input.
-    const filterBar = buildTaskFilterBar(entry.name, visible, state.tags, fillList);
+    // Re-fills just the list, from the top, not the whole page — typing in
+    // the filter's search box calls this on every keystroke, and a full
+    // render() would rebuild (and so unfocus) that very input.
+    const filterBar = buildTaskFilterBar(entry.name, visible, state.tags, () => {
+      listEl.scrollTop = 0;
+      fillList();
+    });
     container.appendChild(filterBar.el);
     function fillList() {
       listEl.textContent = "";
@@ -64,8 +67,14 @@ function buildTasksPanel(entry, panel) {
             action: { label: "Clear filter", onClick: filterBar.clear },
           })
         );
-      } else matching.forEach((task) => listEl.appendChild(buildTaskRow(entry, task, panel)));
-      filterBar.updateStatus(matching.length, visible.length);
+      } else {
+        const { searched, others } = splitOffSearchedTasks(matching, taskFilter.query);
+        const addRows = (tasks) => tasks.forEach((task) => listEl.appendChild(buildTaskRow(entry, task, panel)));
+        addRows(searched);
+        if (searched.length > 0 && others.length > 0) listEl.appendChild(buildRelatedTasksLabel(others.length));
+        addRows(others);
+      }
+      filterBar.updateStatus(matching.length);
     }
     fillList();
   }
@@ -139,6 +148,22 @@ function taskMatchesFilter(task, filter) {
     if (taskDate === null || taskDate < filter.start || taskDate > filter.end) return false;
   }
   return true;
+}
+
+// Searching a task's ID also finds every task that mentions it, so the task
+// with that ID is split off to list first, with the others under a "Related"
+// label (see buildTasksPanel). The others keep their order.
+function splitOffSearchedTasks(tasks, query) {
+  const terms = filterTerms(query);
+  const isSearched = (task) => terms.includes(task.id.toLowerCase());
+  return { searched: tasks.filter(isSearched), others: tasks.filter((task) => !isSearched(task)) };
+}
+
+function buildRelatedTasksLabel(count) {
+  const label = document.createElement("div");
+  label.className = "task-list-label";
+  label.textContent = `Related - ${count}`;
+  return label;
 }
 
 // --- Tasks date filter: the filter field's date button opens the same
@@ -282,7 +307,7 @@ function buildTaskDateDropdown(name, tasks) {
   });
 }
 
-// The bar above the task list: the search text, a "3 of 27" count and a
+// The bar above the task list: the search text, a "3 results" count and a
 // clear-all × (those two only while a filter is set), with the tags
 // dropdown and the date button as segments at its right end. Typing applies
 // through `onChange` (re-filling just the list — see buildTasksPanel); the
@@ -310,9 +335,9 @@ function buildTaskFilterBar(name, tasks, knownTags, onChange) {
   return {
     el: filter.el,
     clear: filter.clear,
-    updateStatus(shown, total) {
+    updateStatus(shown) {
       const active = isTaskFilterActive(taskFilter);
-      filter.updateStatus(active ? `${shown} of ${total}` : null, active);
+      filter.updateStatus(active ? `${shown} result${shown === 1 ? "" : "s"}` : null, active);
     },
   };
 }
@@ -991,7 +1016,7 @@ function buildTaskStatusFilter(counts) {
     const checked = taskStatusFilter.has(status);
     const empty = counts[status] === 0;
     const label = document.createElement("label");
-    label.className = "task-status-btn" + (checked ? " active" : "") + (empty ? " disabled" : "");
+    label.className = "check-chip" + (checked ? " active" : "") + (empty ? " disabled" : "");
     if (empty) label.title = `No ${status} tasks`;
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";

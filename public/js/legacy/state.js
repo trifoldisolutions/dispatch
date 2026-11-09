@@ -2,7 +2,7 @@
 
 // Real folders that aren't actually assignable projects — leave them out of
 // the folder-name suggestion list.
-const SUGGESTION_EXCLUDED_FOLDERS = new Set(["new_project_sample", "dispatch", "scripts"]);
+const SUGGESTION_EXCLUDED_FOLDERS = new Set(["dispatch", "scripts"]);
 let entries = [];
 let unassigned = [];
 let openAssignDropdown = null;

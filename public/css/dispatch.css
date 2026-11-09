@@ -1270,16 +1270,17 @@ body {
   font-size: 12px;
   color: var(--text-dim);
 }
-/* The Tasks header's figures, each a checkbox button filtering the list
-   (see buildTaskStatusFilter). The negative margin keeps the header as
-   tall as the other panels' plain-text ones; the row gap makes up for it
-   if they ever wrap. */
+/* A figure that's a checkbox button filtering a list: the Tasks header's
+   (see buildTaskStatusFilter) and the project list's running count (see
+   ListTotals). In the Tasks header, the negative margin keeps it as tall as
+   the other panels' plain-text ones; the row gap makes up for it if they
+   ever wrap. */
 .task-status-filter { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px 6px; min-width: 0; }
-.task-status-btn {
+.task-status-filter .check-chip { margin: -4px 0; }
+.check-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin: -4px 0;
   padding: 2px 9px 2px 5px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1291,17 +1292,17 @@ body {
   cursor: pointer;
   user-select: none;
 }
-.task-status-btn .checkbox-icon { width: 15px; height: 15px; }
-.task-status-btn:not(.disabled):hover { border-color: var(--accent); }
-.task-status-btn.active {
+.check-chip .checkbox-icon { width: 15px; height: 15px; }
+.check-chip:not(.disabled):hover { border-color: var(--accent); }
+.check-chip.active {
   border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
   background: color-mix(in srgb, var(--accent) 14%, var(--panel));
 }
-/* No tasks with that status, so nothing for it to show or hide. */
-.task-status-btn.disabled { opacity: 0.45; cursor: not-allowed; }
+/* Nothing under that figure, so nothing for it to show or hide. */
+.check-chip.disabled { opacity: 0.45; cursor: not-allowed; }
 /* Focus rings the whole button rather than just its checkbox icon. */
-.task-status-btn:has(.icon-checkbox-input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
-.task-status-btn .icon-checkbox:has(.icon-checkbox-input:focus-visible) .checkbox-icon { outline: none; }
+.check-chip:has(.icon-checkbox-input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+.check-chip .icon-checkbox:has(.icon-checkbox-input:focus-visible) .checkbox-icon { outline: none; }
 .project-panel-body {
   flex: 1;
   min-height: 0;
@@ -1727,6 +1728,20 @@ body {
   border-top: 1px solid var(--border);
 }
 .task-row:first-child { border-top: none; }
+/* Heads the tasks that mention a searched ID, below the task that has it:
+   boxed, on the page's background, so the split between them stands out. */
+.task-list-label {
+  margin: 6px 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-align: center;
+}
+.task-list-label + .task-row { border-top: none; }
 /* Whichever task's data is currently loaded into the composer below for
    editing — a plain background tint reads as "in progress" without
    the layout disruption a border/padding change would cause. Applied

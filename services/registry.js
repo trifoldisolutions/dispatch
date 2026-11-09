@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const Project = require("../models/Project");
 const Membership = require("../models/Membership");
-const { PROJECTS_ROOT, SELF_PROJECT, RESERVED_NAMES, CATEGORIES, CATEGORY_LIMITS, PROJECT_DESCRIPTION_MAX_LENGTH, BASE_PORT, SAMPLE_PROJECT_DIR, SAMPLE_TEMPLATE_FILES } = require("../config/projects");
+const { PROJECTS_ROOT, SELF_PROJECT, RESERVED_NAMES, CATEGORIES, CATEGORY_LIMITS, PROJECT_DESCRIPTION_MAX_LENGTH, BASE_PORT, PROJECT_TEMPLATE_DIR, PROJECT_TEMPLATE_FILES } = require("../config/projects");
 
 const PROJECT_STATUSES = Project.schema.path("status").enumValues;
 
@@ -219,20 +219,30 @@ function validateRegistry(data, existingNames) {
   return null;
 }
 
-// Seeds a project folder with whichever starter files from new_project_sample/
+// Throws if a starter file is missing: a project without them wouldn't know the
+// standard it has to follow, so callers refuse before they change anything.
+function checkProjectTemplate() {
+  for (const { file } of PROJECT_TEMPLATE_FILES) {
+    if (!fs.existsSync(path.join(PROJECT_TEMPLATE_DIR, file))) {
+      throw new Error(`the project template is missing ${file} (expected in config/project_template/)`);
+    }
+  }
+}
+
+// Seeds a project folder with whichever starter files from config/project_template/
 // it's missing — a fresh folder gets both, a folder that already had its own
 // AGENTS.md/init_prompt.md (or picked one up some other way) keeps it as-is.
 // Those files use a ":projectFolderName" placeholder (in paths, the Mongo
 // dbName/URI, the .vbs launcher name, etc.) meant to be swapped for the real
 // folder name before use, so that substitution happens here.
 function seedProjectFolder(dir, name) {
-  for (const file of SAMPLE_TEMPLATE_FILES) {
-    const dest = path.join(dir, file);
-    if (fs.existsSync(dest)) continue;
-    const src = path.join(SAMPLE_PROJECT_DIR, file);
-    if (!fs.existsSync(src)) continue;
-    const content = fs.readFileSync(src, "utf8").split(":projectFolderName").join(name);
-    fs.writeFileSync(dest, content);
+  checkProjectTemplate();
+  for (const { file, dest } of PROJECT_TEMPLATE_FILES) {
+    const target = path.join(dir, dest);
+    if (fs.existsSync(target)) continue;
+    const content = fs.readFileSync(path.join(PROJECT_TEMPLATE_DIR, file), "utf8").split(":projectFolderName").join(name);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, content);
   }
 }
 
@@ -299,6 +309,7 @@ module.exports = {
   listProjectFolders,
   collectNames,
   validateRegistry,
+  checkProjectTemplate,
   seedProjectFolder,
   findAssignedEntry,
   syncEnvPort,

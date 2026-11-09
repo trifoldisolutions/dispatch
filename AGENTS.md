@@ -21,7 +21,7 @@
 > ├── dispatch.vbs         Opens VS Code and the dashboard, starting the server if it isn't up
 > ├── run-hidden.vbs       Starts `npm run dev` and `npm run tw` in hidden windows
 > ├── .vscode/tasks.json   Runs `npm run dev`
-> ├── config/              Constants and settings: database connection, port, projects folder, categories
+> ├── config/              Constants and settings: database connection, port, projects folder, categories. project_template/ is the standard every new project starts from
 > ├── models/              Mongoose models, one per file
 > ├── routes/
 > │   ├── app.js           The pages and sign-in pages, mounted at /

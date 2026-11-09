@@ -17,8 +17,14 @@ const CATEGORIES = ["fire", "breeze", "cold"];
 const CATEGORY_LIMITS = { fire: 2, breeze: 4 }; // cold is unlimited
 const PROJECT_DESCRIPTION_MAX_LENGTH = 230; // mirrors the create form's description maxlength in views/app/index.ejs
 const BASE_PORT = 3001;
-const SAMPLE_PROJECT_DIR = path.join(PROJECTS_ROOT, "new_project_sample");
-const SAMPLE_TEMPLATE_FILES = ["AGENTS.md", "init_prompt.md"];
+// The standard every new project starts from: each file here is copied to
+// `dest` in the project's folder. A file named AGENTS.md here would be read by
+// agents as instructions for this folder, so it only takes that name when copied.
+const PROJECT_TEMPLATE_DIR = path.join(__dirname, "project_template");
+const PROJECT_TEMPLATE_FILES = [
+  { file: "AGENTS.template.md", dest: "AGENTS.md" },
+  { file: "init_prompt.md", dest: path.join("dev_resources", "init_prompt.md") },
+];
 // Skipped when scanning for a project's most recent edit — otherwise a stray
 // `npm install` (node_modules) or IDE metadata write would outrank the code
 // itself for "last edited". The Explorer's search doesn't look inside them
@@ -36,7 +42,7 @@ module.exports = {
   CATEGORY_LIMITS,
   PROJECT_DESCRIPTION_MAX_LENGTH,
   BASE_PORT,
-  SAMPLE_PROJECT_DIR,
-  SAMPLE_TEMPLATE_FILES,
+  PROJECT_TEMPLATE_DIR,
+  PROJECT_TEMPLATE_FILES,
   STAT_EXCLUDED_DIRS,
 };

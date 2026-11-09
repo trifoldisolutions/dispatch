@@ -346,12 +346,23 @@ function ScrollRail({ boxRef }) {
 
 // How many projects you have, and how many of them are running, counted as the
 // cards are (Dispatch's own is running by definition), whatever the search and
-// filters leave showing. A dash until the list loads, not a false 0.
+// filters leave showing. A dash until the list loads, not a false 0. The running
+// figure is a checkbox, like the Tasks header's, for Show's Running: checking it
+// picks that, so the two always agree. Disabled with nothing running, unless
+// it's checked, or it couldn't be unchecked.
 function ListTotals({ known, total, running }) {
-  const figure = (n) => html`<span class="font-semibold text-fg">${known ? n : "–"}</span>`;
-  return html`<div class="flex h-[38px] shrink-0 items-center justify-between rounded-md border border-line bg-panel px-3 text-[13px] text-dim">
-    <span>${figure(total)} project${total === 1 ? "" : "s"}</span>
-    <span class="flex items-center gap-2"><${LiveDot} on=${known && running > 0} /><span>${figure(running)} running</span></span>
+  const only = runFilter.value === "running";
+  const none = known && !running && !only;
+  const off = !known || none;
+  return html`<div class="flex h-[38px] shrink-0 items-center justify-between text-[13px] text-dim">
+    <span><span class="font-semibold text-fg">${known ? total : "–"}</span> project${total === 1 ? "" : "s"}</span>
+    <label class=${"check-chip" + (only ? " active" : "") + (off ? " disabled" : "")} title=${none ? "No projects running" : "Show only running projects"}>
+      <span class="icon-checkbox">
+        <input type="checkbox" class="icon-checkbox-input" checked=${only} disabled=${off} onChange=${() => pickShow("running")} />
+        <span class="icon-checkbox-box" dangerouslySetInnerHTML=${{ __html: window.DispatchLegacy.checkboxIcon(only) }}></span>
+      </span>
+      <span>${known ? running : "–"} running</span>
+    </label>
   </div>`;
 }
 

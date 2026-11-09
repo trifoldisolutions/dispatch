@@ -176,6 +176,7 @@ window.DispatchLegacy = {
   setStatus,
   confirm: customConfirm,
   prompt: customPrompt, // a confirm that takes typing a value, for deleting
+  checkboxIcon,
   // Run state, after a start or stop made outside the project page's own button.
   refreshStatus() {
     refreshProjectRunStatus();

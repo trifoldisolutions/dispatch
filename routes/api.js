@@ -13,7 +13,7 @@ const live = require("../services/live");
 const { isOnline } = require("../services/auth");
 const { INVITE_MS, RESET_MS, USER_FIELDS, describeUsers, parseAccount, passwordLink, changed, projectNamesOf } = require("../services/accounts");
 const { avatarUrl, moveAvatar, displayName, STAFF_ROLES, staffByProject, projectClients, actorOf, projectsForUser, staffProjectDirs } = require("../services/people");
-const { readRegistry, writeRegistry, listProjectFolders, collectNames, validateRegistry, seedProjectFolder, findAssignedEntry, syncEnvPort, syncAllEnvPorts, resolveProjectDir } = require("../services/registry");
+const { readRegistry, writeRegistry, listProjectFolders, collectNames, validateRegistry, checkProjectTemplate, seedProjectFolder, findAssignedEntry, syncEnvPort, syncAllEnvPorts, resolveProjectDir } = require("../services/registry");
 const { JOURNAL_NOTE_MAX_LENGTH, findJournalPath, normalizeJournalFiles, parseJournal, todayDateOnly, addDaysDateOnly, withJournalAudit, appendJournalEntry, readProjectJournalSafe } = require("../services/journal");
 const { DATE_ONLY_RE, findTasksPath, readTasks, parseTaskText, writeTasks, normalizeTagList, mergeKnownTags, generateTaskCode, readProjectTasksSafe, taskFigures } = require("../services/tasks");
 const { ACTIVITY_DAYS, execAsync, recentCommits, parseGitPorcelain, COMMIT_MESSAGE_RELATIVE, readPendingCommitMessage, GIT_LOG_FORMAT, parseGitLogLine, formatAutoCommitTimestamp } = require("../services/git");
@@ -940,6 +940,7 @@ projectRoutes.post("/project-folders/:name", async (req, res) => {
   if (fs.existsSync(dir)) return res.status(409).json({ error: `"${req.params.name}" already exists` });
   try {
     const by = await actorOf(req);
+    checkProjectTemplate(); // before the folder exists, so a refusal leaves nothing behind
     fs.mkdirSync(dir);
     seedProjectFolder(dir, req.params.name);
     appendJournalEntry(findJournalPath(dir), "Project was created", by);
@@ -981,12 +982,14 @@ projectRoutes.put("/registry", async (req, res) => {
     return res.status(400).json({ error });
   }
   try {
-    await writeRegistry(req.body);
     // Any name that's newly tracked (not just newly assigned a port —
     // moving from unassigned to a category doesn't count) gets the starter
     // files it might be missing, whether its folder was just created or
-    // already existed on disk.
+    // already existed on disk. So the template is checked before saving, and
+    // only then: without it a project can't be added, but the rest still can.
     const newNames = [...collectNames(req.body)].filter((name) => !existingNames.has(name));
+    if (newNames.length > 0) checkProjectTemplate();
+    await writeRegistry(req.body);
     for (const name of newNames) {
       const dir = resolveProjectDir(name);
       if (dir && fs.existsSync(dir)) seedProjectFolder(dir, name);
