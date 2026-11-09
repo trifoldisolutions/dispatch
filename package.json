@@ -9,7 +9,7 @@
     "start": "node server.js",
     "seed": "node scripts/seed.js",
     "build": "tailwindcss -i ./src/input.css -o ./public/output.css --minify",
-    "tw": "tailwindcss -i ./src/input.css -o ./public/output.css --watch",
+    "tw": "tailwindcss -i ./src/input.css -o ./public/output.css --watch=always",
     "predev": "npm run build",
     "prestart": "npm run build"
   },

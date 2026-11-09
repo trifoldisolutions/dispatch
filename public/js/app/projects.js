@@ -291,7 +291,7 @@ function scrollPosition(box) {
 const HANDLE = 40; // the handle's height, px
 
 // The line between the column's cards and the page, level with them (from
-// the first card down, not beside the search box and filters), in the
+// the first card down, not beside the totals, search box and filters), in the
 // column's 32px on that side, 16px either side of it. A handle on it while
 // there are more cards than fit: dragged up or down it scrolls them as far,
 // to the top or the bottom at the line's ends. Focused, it takes the arrow
@@ -344,9 +344,20 @@ function ScrollRail({ boxRef }) {
   </div>`;
 }
 
-// The search box, the filters, then the cards, which scroll on their own
-// with no scrollbar showing. Shared by the column, which has ScrollRail
-// (rail) along its right, and the list over the page.
+// How many projects you have, and how many of them are running, counted as the
+// cards are (Dispatch's own is running by definition), whatever the search and
+// filters leave showing. A dash until the list loads, not a false 0.
+function ListTotals({ known, total, running }) {
+  const figure = (n) => html`<span class="font-semibold text-fg">${known ? n : "–"}</span>`;
+  return html`<div class="flex h-[38px] shrink-0 items-center justify-between rounded-md border border-line bg-panel px-3 text-[13px] text-dim">
+    <span>${figure(total)} project${total === 1 ? "" : "s"}</span>
+    <span class="flex items-center gap-2"><${LiveDot} on=${known && running > 0} /><span>${figure(running)} running</span></span>
+  </div>`;
+}
+
+// The totals, the search box, the filters, then the cards, which scroll on
+// their own with no scrollbar showing. Shared by the column, which has
+// ScrollRail (rail) along its right, and the list over the page.
 function ListBody({ rail }) {
   const { loaded, error, list } = store.myProjects.value;
   const rows = visible.value;
@@ -373,8 +384,11 @@ function ListBody({ rail }) {
   }, [current, loaded]);
 
   const filtered = loaded && rows.length < list.length;
+  const status = store.status.value;
   return html`
-    <label class="relative flex h-[38px] shrink-0 items-center">
+    <${ListTotals} known=${loaded && !(error && !list.length)} total=${list.length}
+      running=${list.filter((project) => store.runState(project, status) === "running").length} />
+    <label class="relative mt-[11px] flex h-[38px] shrink-0 items-center">
       <${Icon} name="search" size=${14} class="pointer-events-none absolute left-3 text-dim" />
       <input type="text" placeholder="Filter by name or description…" aria-label="Filter projects by name or description" value=${query.value}
         onInput=${(e) => (query.value = e.currentTarget.value)}
@@ -433,9 +447,9 @@ function ListOverlay() {
 }
 
 // Beside project pages (and /projects): the column from 1280px, under it the
-// list over the page. Level with the toolbar's row, its search box; with the
-// project's header, its filters. The column stays in view as the page
-// scrolls; its cards scroll on their own. 320px of cards, as on the old
+// list over the page. Level with the toolbar's row, its totals; with the top
+// of the project's header, its search box. The column stays in view as the
+// page scrolls; its cards scroll on their own. 320px of cards, as on the old
 // card grid, 16px from the left menu, like the gaps between the project's
 // panels, and 32px from the project with ScrollRail's line halfway: the
 // page has no padding of its own on this side (see .app-content).

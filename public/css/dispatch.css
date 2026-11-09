@@ -90,7 +90,7 @@ body {
 .toast-close:hover { opacity: 1; }
 .toast-close svg { display: block; }
 /* The row over a project's header box: 60px with its 38px buttons, level
-   with the project list's search box beside it. Taller only when it has to
+   with the project list's totals beside it. Taller only when it has to
    wrap. */
 .toolbar {
   display: flex;
@@ -2143,7 +2143,7 @@ body {
   z-index: 1;
 }
 /* Its top level with the project line's buttons and the project list's
-   search box, 11px down the toolbar's row (38px tall, centered in 60), and
+   totals, 11px down the toolbar's row (38px tall, centered in 60), and
    kept there while the page scrolls; its panels end 16px above the window's
    foot, like the page's and the list's. The form and Your tasks take their
    own height and People (public/js/app/side.js) the rest, its list of
