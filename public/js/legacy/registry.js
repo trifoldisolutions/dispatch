@@ -2,7 +2,7 @@
 
 // What the registry keeps of a project besides its port. Its live site
 // (`url`) is only written when it has one, and its status when it's known
-// (see writeRegistry in server.js).
+// (see writeRegistry in services/registry.js).
 function toRegistryEntry(e) {
   const out = { name: e.name, description: e.description };
   if (e.url) out.url = e.url;

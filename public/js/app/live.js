@@ -1,4 +1,4 @@
-// The page's end of /live (see live.js beside server.js): one WebSocket the
+// The page's end of /live (see services/live.js): one WebSocket the
 // server pushes changes down. While it's open, the older scripts' polls
 // stand down (they check window.DispatchLive.connected); while it's down they
 // run as before, and this keeps trying to reconnect, a little slower each time.

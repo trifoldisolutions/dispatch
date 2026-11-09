@@ -9,13 +9,13 @@
 require("dotenv").config({ override: true, quiet: true });
 const path = require("path");
 const mongoose = require("mongoose");
-const { connectDatabase } = require("../db");
+const { connectDatabase } = require("../config/db");
 const User = require("../models/User");
 const Project = require("../models/Project");
 const Membership = require("../models/Membership");
 const { description: DISPATCH_DESCRIPTION } = require("../package.json");
 
-const DISPATCH_PROJECT = path.basename(path.join(__dirname, "..")); // SELF_PROJECT in server.js
+const DISPATCH_PROJECT = path.basename(path.join(__dirname, "..")); // SELF_PROJECT in config/projects.js
 const EMAIL_DOMAIN = "dispatch.test"; // a reserved domain, so no seed email can reach a real inbox
 const LOCAL_HOSTS = ["localhost", "127.0.0.1"];
 const UPSERT = { upsert: true, returnDocument: "after", runValidators: true };

@@ -30,7 +30,7 @@ export const openInVSCode = (name) => request("POST", `/api/projects/${project(n
 export const patchTask = (name, id, changes) =>
   request("PATCH", `/api/project-folders/${project(name)}/tasks/${encodeURIComponent(id)}`, changes);
 
-// Admins only (accounts.js beside server.js).
+// Admins only (routes/api.js).
 const account = (id) => `/api/admin/users/${encodeURIComponent(id)}`;
 export const getAccounts = () => request("GET", "/api/admin/users");
 export const createAccount = (fields) => request("POST", "/api/admin/users", fields);

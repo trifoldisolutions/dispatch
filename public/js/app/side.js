@@ -1,6 +1,6 @@
 // The side column under the Add project form, beside project pages from a
 // 2072px window (see sideShown in store.js), drawn into #side-root
-// (views/index.ejs): Your tasks, the open tasks on your other projects, and
+// (views/app/index.ejs): Your tasks, the open tasks on your other projects, and
 // People, for finding someone to ask, or for a lead someone to bring onto
 // one of their projects. Its panels use the page's own panel styles
 // (.project-panel in public/css/dispatch.css), like the form above them.
@@ -305,7 +305,7 @@ function noneFoundText(q, role) {
   return q ? `${who} ${role === "all" ? "matches" : "match"} "${q}".` : `${who} on your projects.`;
 }
 
-// Up to 5 (PEOPLE_SHOWN in server.js) of the people you work with (online
+// Up to 5 (PEOPLE_SHOWN in routes/api.js) of the people you work with (online
 // first, then the most recently seen), and a search for anyone else, with a
 // role filter at its end; its title leads to the People page, which has
 // them all. The panel fills the side column below Your tasks

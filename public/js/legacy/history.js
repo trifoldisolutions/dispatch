@@ -146,7 +146,7 @@ async function pushProjectChanges(entry, panel) {
 // currently show a git status, the commit message the next push will use
 // (the summary line, full text on hover), plus a one-click "Push" button.
 // No commit-message prompt by design — the project's agents keep that
-// message written as they work (see git-push in server.js).
+// message written as they work (see git-push in routes/api.js).
 function buildGitPushBar(entry, panel, gitState, commitMessage) {
   const bar = document.createElement("div");
   bar.className = "git-push-bar";

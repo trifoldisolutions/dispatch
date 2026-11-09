@@ -119,7 +119,7 @@ function buildJournalPanel(entry, panel) {
 // files they reported. `terms` are the filter's search words, marked
 // wherever they turn up. Each entry's time sits under its text: for one the
 // dashboard inserted, the exact insert time (`insertedAt`, from the audit log
-// in server.js), to the second, and who inserted it (`insertedBy`); for a
+// in services/journal.js), to the second, and who inserted it (`insertedBy`); for a
 // hand-written one, the HH:MM it was written with. Their tooltips say which
 // it is.
 function buildJournalDay(name, day, terms) {
@@ -199,7 +199,7 @@ function journalFilesExistingByDate(days) {
 }
 
 // Every file a day's entries reported (their `files`, see parseJournal in
-// server.js), merged per kind and sorted. A file created that day and then
+// services/journal.js), merged per kind and sorted. A file created that day and then
 // edited again still counts as created. A file stays created only on the
 // day it first appeared: one in `existing` (already there when the day
 // began, see journalFilesExistingByDate) that an entry reports as created

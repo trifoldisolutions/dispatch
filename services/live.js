@@ -1,4 +1,9 @@
 const { WebSocketServer } = require("ws");
+const Project = require("../models/Project");
+const { SELF_PROJECT } = require("../config/projects");
+const { sessions, loadUser } = require("../middleware/auth");
+const { recentlySeenUserIds, touchUsers, onLogout } = require("./auth");
+const { isPortServing, runsSnapshot } = require("./processes");
 
 // /live: one WebSocket per open Dispatch page, for what changes while it's
 // open. In place of every page polling every few seconds, the server checks
@@ -241,7 +246,7 @@ function createLive({ sessions, loadUser, watchedPorts, isPortServing, runsSnaps
     loggedOut({ sessionId }) {
       endSockets([...sockets].filter((ws) => ws.sessionId === sessionId));
     },
-    // A suspended or deleted account (accounts.js): every page it has open.
+    // A suspended or deleted account (routes/api.js): every page it has open.
     accountClosed(userId) {
       endSockets([...sockets].filter((ws) => ws.userId === String(userId)));
     },
@@ -251,4 +256,19 @@ function createLive({ sessions, loadUser, watchedPorts, isPortServing, runsSnaps
   };
 }
 
-module.exports = { createLive };
+// What open pages hear about without polling.
+const live = createLive({
+  sessions,
+  loadUser,
+  isPortServing,
+  async watchedPorts() {
+    const projects = await Project.find({ port: { $ne: null }, name: { $ne: SELF_PROJECT } }, { port: 1 }).lean();
+    return projects.map((project) => project.port);
+  },
+  runsSnapshot,
+  onlineUserIds: recentlySeenUserIds,
+  touchUsers,
+});
+onLogout((login) => live.loggedOut(login));
+
+module.exports = live;

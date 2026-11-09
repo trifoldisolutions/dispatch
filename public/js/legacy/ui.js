@@ -35,7 +35,7 @@ function formatTimestamp(iso) {
 }
 
 // "Nov 1, 2026, 3:28 PM by Michael H.": a stamp's time and who did it (see
-// actorOf in server.js), or just the time for one from before logins.
+// actorOf in services/people.js), or just the time for one from before logins.
 function withAuthor(time, person) {
   return person ? `${time} by ${person.name}` : time;
 }

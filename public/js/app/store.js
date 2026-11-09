@@ -9,7 +9,7 @@ import * as api from "./api.js";
 
 const legacy = () => window.DispatchLegacy;
 
-// An admin's page (views/index.ejs marks it): they oversee the projects
+// An admin's page (views/app/index.ejs marks it): they oversee the projects
 // without working on them, so Users is their only page. The server decides
 // what they can do; this only shapes the page.
 export const isAdmin = document.body.hasAttribute("data-admin");

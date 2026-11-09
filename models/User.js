@@ -20,7 +20,7 @@ const UserSchema = new Schema(
     passwordLinkExpiresAt: { type: Date, default: null },
     isAdmin: { type: Boolean, default: false },
     status: { type: String, enum: USER_STATUSES, default: "invited" },
-    lastSeenAt: { type: Date, default: null }, // their last request while logged in, kept to within SEEN_WRITE_MS (auth.js)
+    lastSeenAt: { type: Date, default: null }, // their last request while logged in, kept to within SEEN_WRITE_MS (services/auth.js)
   },
   {
     timestamps: true,

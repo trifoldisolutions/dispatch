@@ -1,7 +1,7 @@
 
 > After making any edit or running tests, and before ending a turn or task, check that the dev server is still running. If it has stopped, treat it as crashed — don't assume it restarts on its own — and restart it before finishing. This check is silent: don't tell the user the server is still running, and don't mention a restart either. Only bring it up if it won't stay running after a restart.
 
-> Dispatch always runs on port 3000 (`PORT` in `server.js`). Don't move it, and don't give 3000 to a project — project ports start at 3001 (`BASE_PORT`), and registry validation rejects anything below that.
+> Dispatch always runs on port 3000 (`PORT` in `config/projects.js`). Don't move it, and don't give 3000 to a project — project ports start at 3001 (`BASE_PORT`), and registry validation rejects anything below that.
 
 > When adding a new entry to this project's journal (`dev_resources/journal.md`, via the Dispatch dashboard's Journal tab), each individual entry must not exceed 150 characters. Write one entry per feature or change, not one per part of it: a feature with its settings, prompts and tests is a single entry. If it doesn't fit in 150 characters, describe it at a higher level instead of splitting it up; the details belong in the commit message. Only log what will be useful to someone reading the journal later: what changed, why, and any decision or gotcha that isn't obvious from the code. Leave out word lists, examples, test counts, lists of files (the file report covers those) and steps that were undone or redone in the same session. Before adding an entry, read today's entries and skip anything one of them already covers.
 
@@ -10,3 +10,39 @@
 > Every journal entry you add must also report the files its work created, modified or deleted, as paths relative to this project's folder with forward slashes. The Dispatch dashboard lists each day's files under that day's entries, so this is what keeps a day's changes traceable. With the dashboard running, send them with the entry: `POST http://localhost:3000/api/project-folders/dispatch/journal` with JSON `{ "content": "...", "files": { "created": ["..."], "modified": ["..."], "deleted": ["..."] } }`, leaving out any list that would be empty. When the `CLAUDE_CODE_SESSION_ID` environment variable is set, also send it as the `X-Agent-Session` header, so the entry's record keeps which Claude Code session wrote it. When writing the journal by hand, put them under the entry as sub-bullets indented two spaces, one line per kind: ``- Created: `path/one.js`, `path/two.js` ``, then ``- Modified: ...`` and ``- Deleted: ...``. List each file under the entry for the change that touched it. The 150-character limit is for the entry's text, not its file list.
 
 > This project's to-do list is `dev_resources/tasks.json`, shown in the Dispatch dashboard's Tasks tab. Whenever something needs doing later (a follow-up, a known bug, something left out of the current work), add it there as a task, not as a TODO comment, a Markdown note or anywhere else. With the dashboard running, use its API: `POST http://localhost:3000/api/project-folders/dispatch/tasks` with JSON `{ "title": "...", "description": "...", "dueDate": "YYYY-MM-DD", "tags": ["..."] }`. Only the title is required (80 characters at most); the description is limited to 500 characters and each tag to 30. When the `CLAUDE_CODE_SESSION_ID` environment variable is set, also send it as the `X-Agent-Session` header, as for journal entries. Never edit `tasks.json` by hand: the dashboard gives each task its ID and records who created it. If the dashboard isn't running, say so and ask instead of writing the file. Only the user marks tasks done or archives them: when you believe you've finished one, say so in your reply, with its ID and title, instead of changing it.
+
+> File and folder structure (hard rule): whenever you create, move or edit files, follow this layout. Put new code where it says, even if the project doesn't have that folder yet. If something has no place here, ask before adding a new top-level folder. Don't move existing files as a side effect of other work unless the user asks.
+>
+> ```
+> dispatch/
+> ├── server.js            App setup, facades list, startup route map
+> ├── AGENTS.md
+> ├── package.json, .env, .env.example, .gitignore
+> ├── dispatch.vbs         Opens VS Code and the dashboard, starting the server if it isn't up
+> ├── run-hidden.vbs       Starts `npm run dev` and `npm run tw` in hidden windows
+> ├── .vscode/tasks.json   Runs `npm run dev`
+> ├── config/              Constants and settings: database connection, port, projects folder, categories
+> ├── models/              Mongoose models, one per file
+> ├── routes/
+> │   ├── app.js           The pages and sign-in pages, mounted at /
+> │   └── api.js           JSON API, mounted at /api
+> ├── middleware/          Express middleware: sign-in, OPTIONS answers
+> ├── services/            Shared logic: accounts, logins, people, live updates, registry, journal, tasks, git, Explorer, running projects
+> ├── views/
+> │   └── app/             Every page, with sign-in pages in app/auth/ and partials in app/partials/
+> ├── src/input.css        Tailwind source
+> ├── public/
+> │   ├── output.css       Built by Tailwind: never edit or commit it
+> │   ├── css/dispatch.css The older parts' stylesheet, edited by hand
+> │   └── js/              Browser scripts: app/ (Preact) and legacy/ (the older parts)
+> ├── avatars/             Git-ignored data, not code: people's profile pictures
+> ├── scripts/             Scripts run by hand
+> └── dev_resources/       Git-ignored and internal: journal, tasks, commit message, notes, one-off scripts
+> ```
+>
+> - Sections: Dispatch has only these two. Every page but the sign-in ones needs a login, so there's no public section, and an admin's Users page is `/users` in `routes/app.js`, with its API at `/api/admin` in `routes/api.js`, so there's no admin section.
+> - Routes: add each route to its section's file, in the group it belongs to, with a line in that file's `router.routes` list (`{ method, path, label }`). No routes in `server.js`, and no new route file per feature. Logic that several routes share, or that calls an outside service, goes in `services/`. `middleware/options.js` answers OPTIONS for the page, project and vendor routes from those lists, so a route left out of its list is left out of `Allow` too.
+> - Folder names: no `utils/`, `lib/` or `helpers/`. Helpers go in `services/`, or in `middleware/` if they handle a request.
+> - Views: every page goes in `views/app/`, never directly in `views/`.
+> - Local-only files: notes, screenshots, logs, prompts and one-off scripts go in `dev_resources/`, not the project root.
+> - Instruction files: `AGENTS.md` is the only one. No `CLAUDE.md` or `.claude/` folder.

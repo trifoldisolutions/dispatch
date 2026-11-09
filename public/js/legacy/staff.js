@@ -95,8 +95,8 @@ function fitStaffNames(root) {
   });
 }
 
-// A person's round avatar: their picture when they have one (see people.js
-// beside server.js), otherwise the user icon.
+// A person's round avatar: their picture when they have one (see
+// services/people.js), otherwise the user icon.
 function buildAvatar(person) {
   const avatar = document.createElement("span");
   avatar.className = "staff-avatar";

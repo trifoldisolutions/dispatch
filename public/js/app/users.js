@@ -4,7 +4,7 @@
 // password link (the invite again, or a reset), suspends or restores it, or
 // deletes it; New user adds an invited account. A link shows once, in a
 // dialog, to be passed on by hand: Dispatch doesn't send email yet, and the
-// server keeps only its hash. The server (accounts.js) checks every change;
+// server keeps only its hash. The server (routes/api.js) checks every change;
 // this page only leaves out what it would refuse, like suspending yourself.
 import { useState, useEffect, useRef } from "preact/hooks";
 import { html } from "./html.js";
@@ -28,7 +28,7 @@ const ROLE_FILTERS = [
   ["none", "On no project"],
 ];
 const ROLE_TEXT = { lead: "Lead", dev: "Developer", client: "Client" };
-const NAME_MAX_LENGTH = 80; // accounts.js
+const NAME_MAX_LENGTH = 80; // services/accounts.js
 const EMAIL_MAX_LENGTH = 254;
 
 // From an 820px wide list, a row is a table's: the person, their projects,

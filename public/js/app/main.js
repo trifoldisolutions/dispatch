@@ -34,7 +34,7 @@ document.getElementById("project-list-btn").addEventListener("click", () => (lis
 const railProjects = document.querySelector('#rail [data-rail="projects"]');
 if (railProjects) effect(() => railProjects.setAttribute("href", firstProjectPath.value || "/projects"));
 
-// The account popup (views/index.ejs) opens 8px beside the left menu, its
+// The account popup (views/app/index.ejs) opens 8px beside the left menu, its
 // foot level with the avatar's; on the phone's bottom bar, 8px above the
 // bar, its right edge with the avatar's. Escape closes it before the page's
 // own Escape (boot.js) can abandon an edit or leave a section's page.

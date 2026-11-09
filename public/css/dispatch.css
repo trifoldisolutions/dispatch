@@ -1,6 +1,6 @@
 /* The project page's width breakpoints below are container queries on
    .app-content, the page's own column: beside it sit the left menu (#rail
-   in views/index.ejs, 72px from 640px up), the project list (from 1280px)
+   in views/app/index.ejs, 72px from 640px up), the project list (from 1280px)
    and the Add project form (from 2072px), so the window's width alone
    doesn't say how much room the page has. */
 :root {
@@ -2119,7 +2119,7 @@ body {
 
 /* ---- Shell: the columns beside the left menu (the project list, the page
    and the form column), the toolbar (project pages only) and the Add/Edit
-   drawer (see views/index.ejs). ---- */
+   drawer (see views/app/index.ejs). ---- */
 .toolbar[hidden] { display: none; }
 /* The project list sits 16px from the left menu, like the gaps between the
    project's panels, and 32px from the page with its line halfway (its own

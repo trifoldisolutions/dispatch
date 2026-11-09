@@ -10,7 +10,7 @@
 //   node scripts/seed-people.js --remove   delete them
 require("dotenv").config({ override: true, quiet: true });
 const mongoose = require("mongoose");
-const { connectDatabase } = require("../db");
+const { connectDatabase } = require("../config/db");
 const User = require("../models/User");
 const Project = require("../models/Project");
 const Membership = require("../models/Membership");
