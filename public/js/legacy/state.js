@@ -6,7 +6,6 @@ const SUGGESTION_EXCLUDED_FOLDERS = new Set(["dispatch", "scripts"]);
 let entries = [];
 let unassigned = [];
 let openAssignDropdown = null;
-let portSwitchOpen = false; // the project header's Switch port menu (see buildPortSwitchDropdown)
 let projectPathInfo = {}; // project name -> { path, created, modified } | { error }, cached once fetched
 const projectPathInfoInFlight = new Set(); // names with a stat fetch already in progress, to dedupe across renders
 let createCategoryDropdownOpen = false;
@@ -30,11 +29,12 @@ let journalCalendarOpen = false; // the Journal filter field's calendar dropdown
 let journalCalendarMonth = null; // { year, month } that open calendar is showing
 let journalRangeAnchor = null; // the first day clicked, while the calendar waits for a second click to make it a range
 // Tasks panel (per-project dev_resources/tasks.json):
-let taskCache = {}; // project name -> { tasks: [{ id, title, description, done, doneAt, archived, archivedAt, dueDate, tags, createdAt, updatedAt }], tags: string[] } | { error } once fetched
+let taskCache = {}; // project name -> { tasks: [{ id, title, description, done, doneAt, archived, archivedAt, dueDate, priority, tags, createdAt, updatedAt }], tags: string[] } | { error } once fetched
 const taskInFlight = new Set();
 let taskTitleDraft = {}; // project name -> in-progress composer title
 let taskDescriptionDraft = {}; // project name -> in-progress composer description
 let taskDueDraft = {}; // project name -> in-progress composer due date ("YYYY-MM-DD" or "")
+let taskPriorityDraft = {}; // project name -> priority picked in the composer (one of TASK_PRIORITIES' values, or "")
 let taskTagsDraft = {}; // project name -> Set<string> of tags checked in the composer's tags dropdown
 const taskSubmitting = new Set(); // project names with a create POST in flight
 const taskUpdating = new Set(); // task ids with a done/archive/delete/edit request in flight
@@ -44,11 +44,14 @@ let openTagsDropdownFor = null; // "composer" | "filter" | task id | null — wh
 let taskFilter = emptyTaskFilter(); // the project page's Tasks filter — only one page shows at a time, reset whenever another opens
 const TASK_STATUSES = ["open", "done", "archived"]; // the Tasks header's figures, in order (see taskStatus)
 let taskStatusFilter = defaultTaskStatusFilter(); // which of TASK_STATUSES are checked in the Tasks header, i.e. listed; reset with taskFilter
+let taskSectionsCollapsed = defaultTaskSectionsCollapsed(); // which of the task list's labeled sections ("done", "archived") are folded shut; reset with taskFilter
 let taskCalendarOpen = false; // the Tasks filter bar's calendar dropdown (see buildTaskCalendar)
 let taskCalendarMonth = null; // { year, month } that open calendar is showing
 let taskRangeAnchor = null; // like journalRangeAnchor, for that calendar
 let taskDueCalendarOpen = false; // the Tasks composer's due date calendar (see buildTaskDueDropdown)
 let taskDueCalendarMonth = null; // { year, month } that open calendar is showing
+let taskPriorityMenuOpen = false; // the Tasks composer's priority menu (see buildTaskPriorityDropdown)
+let taskPriorityFilterOpen = false; // the Tasks filter bar's priority menu (see buildTaskPriorityFilterDropdown)
 let activeDialog = null; // { resolve } | null — the custom confirm/prompt dialog's pending promise, while one is open
 let newFolders = []; // on-disk project folders with no registry entry, from the most recent load()
 let newFoldersModalOpen = false;
@@ -99,10 +102,17 @@ function defaultTaskStatusFilter() {
   return new Set(["open", "done"]);
 }
 
-// `dateField` is which of a task's dates the `start`–`end` range (inclusive
-// "YYYY-MM-DD" bounds, nulls when unset) is matched against — the calendar's
-// Due date/Date added toggle — and survives clearing, so it stays where the
-// user left it.
+// The Done section starts folded shut under the open tasks; the Archived one
+// starts open, as it only shows once the header's box asks for it.
+function defaultTaskSectionsCollapsed() {
+  return new Set(["done"]);
+}
+
+// `priorities` holds the checked levels (TASK_PRIORITIES' values).
+// `dateField` is which of a task's dates the
+// `start`–`end` range (inclusive "YYYY-MM-DD" bounds, nulls when unset) is
+// matched against — the calendar's Due date/Date added toggle — and survives
+// clearing, so it stays where the user left it.
 function emptyTaskFilter(dateField = "due") {
-  return { query: "", tags: new Set(), dateField, start: null, end: null };
+  return { query: "", tags: new Set(), priorities: new Set(), dateField, start: null, end: null };
 }

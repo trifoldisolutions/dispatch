@@ -15,8 +15,8 @@ const { INVITE_MS, RESET_MS, USER_FIELDS, describeUsers, parseAccount, passwordL
 const { avatarUrl, moveAvatar, displayName, STAFF_ROLES, staffByProject, projectClients, actorOf, projectsForUser, staffProjectDirs } = require("../services/people");
 const { readRegistry, writeRegistry, listProjectFolders, collectNames, validateRegistry, checkProjectTemplate, seedProjectFolder, hasLayoutRules, findAssignedEntry, syncEnvPort, syncAllEnvPorts, resolveProjectDir } = require("../services/registry");
 const { JOURNAL_NOTE_MAX_LENGTH, findJournalPath, normalizeJournalFiles, parseJournal, todayDateOnly, addDaysDateOnly, withJournalAudit, appendJournalEntry, readProjectJournalSafe } = require("../services/journal");
-const { DATE_ONLY_RE, findTasksPath, readTasks, parseTaskText, writeTasks, normalizeTagList, mergeKnownTags, generateTaskCode, readProjectTasksSafe, taskFigures } = require("../services/tasks");
-const { ACTIVITY_DAYS, execAsync, recentCommits, parseGitPorcelain, COMMIT_MESSAGE_RELATIVE, readPendingCommitMessage, GIT_LOG_FORMAT, parseGitLogLine, formatAutoCommitTimestamp } = require("../services/git");
+const { DATE_ONLY_RE, findTasksPath, readTasks, parseTaskText, parseTaskPriority, urgentLimitRefusal, writeTasks, normalizeTagList, mergeKnownTags, generateTaskCode, readProjectTasksSafe, taskFigures } = require("../services/tasks");
+const { ACTIVITY_DAYS, execAsync, recentCommits, parseGitPorcelain, COMMIT_MESSAGE_RELATIVE, readPendingCommitMessage, pendingCommitMessageMtime, GIT_LOG_FORMAT, parseGitLogLine, formatAutoCommitTimestamp } = require("../services/git");
 const { latestMtimeMs, resolveTreeTarget, TREE_SEARCH_MAX_MATCHES, searchFileContent } = require("../services/explorer");
 const { runningProjects, isPortServing, hasScript, killProcessTree, attachExitWatcher, findPidsListeningOnPort, runsSnapshot, bringExplorerToFront } = require("../services/processes");
 
@@ -242,6 +242,27 @@ projectRoutes.get("/me/tasks", requireApiLogin, async (req, res) => {
     res.json({ today: todayDateOnly(), tasks });
   } catch (err) {
     res.status(500).json({ error: `failed to load your tasks: ${err.message}` });
+  }
+});
+
+// The commit messages waiting for a push on the user's projects, the one
+// written last first: the side column's Ready to push. Each project's agents
+// keep its message up to date as they journal, and its Push commits with it
+// and deletes it (see git-push), so each one here is work not pushed yet.
+projectRoutes.get("/me/pushes", requireApiLogin, async (req, res) => {
+  try {
+    const pushes = [];
+    for (const { name, dir } of await staffProjectDirs(req.user)) {
+      const message = readPendingCommitMessage(dir);
+      const mtime = message && pendingCommitMessageMtime(dir);
+      if (!mtime) continue;
+      const [summary, ...body] = message.split("\n");
+      pushes.push({ project: name, summary, body: body.join("\n").trim(), updatedAt: new Date(mtime).toISOString() });
+    }
+    pushes.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    res.json({ pushes });
+  } catch (err) {
+    res.status(500).json({ error: `failed to load commit messages: ${err.message}` });
   }
 });
 
@@ -745,6 +766,7 @@ projectRoutes.post("/project-folders/:name/git-push", async (req, res) => {
       // Locked by something else holding it open. The commit itself is done;
       // the cost is the next push's message still carrying this one's lines.
     }
+    live.pushesChanged();
   }
 
   try {
@@ -816,6 +838,8 @@ projectRoutes.post("/project-folders/:name/tasks", async (req, res) => {
   if (dueDateRaw && !DATE_ONLY_RE.test(dueDateRaw)) {
     return res.status(400).json({ error: "invalid due date" });
   }
+  const priority = parseTaskPriority(req.body);
+  if (priority.error) return res.status(400).json({ error: priority.error });
   const taskTags = normalizeTagList(req.body.tags);
   try {
     const by = await actorOf(req); // before the read: a wait between it and the write could lose another request's change
@@ -824,7 +848,7 @@ projectRoutes.post("/project-folders/:name/tasks", async (req, res) => {
     const now = new Date().toISOString();
     const id = generateTaskCode(new Set(data.tasks.map((t) => t.id)));
     mergeKnownTags(data.tags, taskTags);
-    data.tasks.unshift({
+    const task = {
       id,
       title: text.title,
       description: text.description || "",
@@ -835,12 +859,16 @@ projectRoutes.post("/project-folders/:name/tasks", async (req, res) => {
       archivedAt: null,
       archivedBy: null,
       dueDate: dueDateRaw || null,
+      priority: priority.priority || null,
       tags: taskTags,
       createdAt: now,
       createdBy: by,
       updatedAt: now,
       updatedBy: by,
-    });
+    };
+    const refusal = urgentLimitRefusal(data.tasks, task);
+    if (refusal) return res.status(409).json(refusal);
+    data.tasks.unshift(task);
     writeTasks(tasksPath, data);
     res.json({ tasks: data.tasks, tags: data.tags });
     live.projectChanged(req.params.name, "tasks");
@@ -851,14 +879,17 @@ projectRoutes.post("/project-folders/:name/tasks", async (req, res) => {
 
 // Partial update: `done`/`archived` flip the checkbox/archive button,
 // `title`/`description` rewrite the task's own text (a title can't be
-// emptied, a description can), `dueDate` sets or clears (null or "") its due
-// date, and `tags` replaces its tag list wholesale (any new tag name in it is
+// emptied, a description can), `dueDate` and `priority` set or clear (null or
+// "") its due date and priority, and `tags` replaces its tag list wholesale (any new tag name in it is
 // merged onto the project's known tags) — any subset can be sent at once, as
 // the composer does when saving an edit. Flipping `done`/`archived` on stamps
 // `doneAt`/`archivedAt` with the time and `doneBy`/`archivedBy` with who did it
 // (see actorOf), and flipping it off clears both; sending the value a task
 // already has leaves its stamps alone. Tasks done or archived before these
 // stamps existed have none, and tasks from before logins have no `createdBy`.
+// A change that would leave the task open and urgent past the project's limit
+// is refused with a 409 and nothing is saved (urgentLimitRefusal), as is
+// adding such a task above.
 projectRoutes.patch("/project-folders/:name/tasks/:id", async (req, res) => {
   const dir = resolveProjectDir(req.params.name);
   if (!dir || !fs.existsSync(dir)) {
@@ -871,6 +902,7 @@ projectRoutes.patch("/project-folders/:name/tasks/:id", async (req, res) => {
     const id = req.params.id.toUpperCase(); // codes are always stored/shown uppercase; matching is case-insensitive
     const task = data.tasks.find((t) => t.id === id);
     if (!task) return res.status(404).json({ error: "task not found" });
+    const before = { ...task };
     const text = parseTaskText(req.body, { requireTitle: false });
     if (text.error) return res.status(400).json({ error: text.error });
     if (typeof text.title === "string") task.title = text.title;
@@ -884,6 +916,9 @@ projectRoutes.patch("/project-folders/:name/tasks/:id", async (req, res) => {
         return res.status(400).json({ error: "invalid due date" });
       }
     }
+    const priority = parseTaskPriority(req.body);
+    if (priority.error) return res.status(400).json({ error: priority.error });
+    if ("priority" in priority) task.priority = priority.priority;
     if (Array.isArray(req.body.tags)) {
       const taskTags = normalizeTagList(req.body.tags);
       mergeKnownTags(data.tags, taskTags);
@@ -900,6 +935,8 @@ projectRoutes.patch("/project-folders/:name/tasks/:id", async (req, res) => {
       task.archivedAt = task.archived ? now : null;
       task.archivedBy = task.archived ? by : null;
     }
+    const refusal = urgentLimitRefusal(data.tasks, task, before);
+    if (refusal) return res.status(409).json(refusal);
     task.updatedAt = now;
     task.updatedBy = by;
     writeTasks(tasksPath, data);
@@ -1171,6 +1208,7 @@ router.routes = [
   { method: "GET", path: "/projects/:name/staff", label: "A project's staff and clients" },
   { method: "GET", path: "/me/projects", label: "Your projects" },
   { method: "GET", path: "/me/tasks", label: "Your open tasks" },
+  { method: "GET", path: "/me/pushes", label: "Commit messages waiting for a push" },
   { method: "GET", path: "/me/activity", label: "Recent journal entries and commits" },
   { method: "GET", path: "/me/people", label: "The people you work with, or a search" },
   { method: "POST", path: "/projects/:name/staff", label: "Add a developer to a project" },

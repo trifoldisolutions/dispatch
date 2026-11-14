@@ -330,7 +330,8 @@ function buildJournalFilterBar(entry, onChange) {
         openTagsDropdownFor = null;
         closeTaskCalendar();
         taskDueCalendarOpen = false;
-        portSwitchOpen = false;
+        taskPriorityMenuOpen = false;
+        taskPriorityFilterOpen = false;
       }
     },
     buildCalendar: () => buildJournalCalendar(entry),
@@ -460,6 +461,19 @@ function buildJournalComposer(entry, panel) {
       e.preventDefault();
       submitJournalNote(entry, panel);
     }
+  });
+
+  // The strip below the textarea is part of the box: a click in its empty
+  // space (or on the counter) focuses the textarea, and stays in here as a
+  // click in the textarea does, rather than closing an open dropdown.
+  const inEmptyStrip = (target) => target === footer || target === counter;
+  footer.addEventListener("mousedown", (e) => {
+    if (!inEmptyStrip(e.target)) return;
+    e.preventDefault(); // keeps the textarea from losing focus first
+    textarea.focus();
+  });
+  footer.addEventListener("click", (e) => {
+    if (inEmptyStrip(e.target)) e.stopPropagation();
   });
 
   footer.appendChild(counter);

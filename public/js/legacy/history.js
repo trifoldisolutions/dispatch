@@ -121,23 +121,38 @@ function refreshGitPushButton(project) {
   btn.textContent = busy ? "Pushing…" : "Push";
 }
 
-// Stages everything, commits with an auto-generated message (server-side —
-// see the git-push endpoint) if there's anything to commit, then pushes.
-// Invalidates the git-status and history caches on success so the Explorer
-// badges and History panel both pick up the new state on the next render.
-async function pushProjectChanges(entry, panel) {
-  if (gitPushInFlight.has(entry.name)) return;
-  gitPushInFlight.add(entry.name);
-  refreshGitPushButton(entry.name);
+// Stages everything, commits with the project's pending message (server-side
+// — see the git-push endpoint) if there's anything to commit, then pushes.
+// The one push behind both Push buttons, this panel's and Ready to push's in
+// the side column (window.DispatchLegacy.pushProject), so each shows the
+// other's running: every start and end is announced as "dispatch:push".
+// Resolves with the endpoint's { ok, committed }, or null when this project
+// is already pushing. Invalidates the git-status and history caches on
+// success so the Explorer badges and History panel both pick up the new
+// state on the next render, which is the caller's to do.
+async function runGitPush(name) {
+  if (gitPushInFlight.has(name)) return null;
+  const announce = () => {
+    refreshGitPushButton(name);
+    document.dispatchEvent(new CustomEvent("dispatch:push", { detail: { pushing: [...gitPushInFlight] } }));
+  };
+  gitPushInFlight.add(name);
+  announce();
   try {
-    await requestGitPush(entry.name);
-    delete gitStatusCache[entry.name];
-    delete historyCache[entry.name];
-    gitPushInFlight.delete(entry.name);
-    render();
+    const result = await requestGitPush(name);
+    delete gitStatusCache[name];
+    delete historyCache[name];
+    return result;
+  } finally {
+    gitPushInFlight.delete(name);
+    announce();
+  }
+}
+
+async function pushProjectChanges(entry, panel) {
+  try {
+    if (await runGitPush(entry.name)) render();
   } catch (err) {
-    gitPushInFlight.delete(entry.name);
-    refreshGitPushButton(entry.name);
     showCardError(panel, err.message);
   }
 }
@@ -173,7 +188,8 @@ function buildGitPushBar(entry, panel, gitState, commitMessage) {
   btn.type = "button";
   btn.className = "git-push-btn";
   btn.dataset.project = entry.name;
-  btn.textContent = "Push";
+  // A redraw mid-push (one started on Ready to push, maybe) keeps showing it.
+  btn.textContent = gitPushInFlight.has(entry.name) ? "Pushing…" : "Push";
   btn.disabled = gitPushInFlight.has(entry.name);
   btn.addEventListener("click", (e) => {
     e.stopPropagation();

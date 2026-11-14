@@ -78,6 +78,15 @@ function readPendingCommitMessage(dir) {
   }
 }
 
+// When the pending commit message was last written, or null without one.
+function pendingCommitMessageMtime(dir) {
+  try {
+    return fs.statSync(path.join(dir, COMMIT_MESSAGE_RELATIVE)).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
 // Fields pulled from `git log -1`, separated by \x1f (unit separator) since
 // it won't collide with anything a commit message or author name contains.
 const GIT_LOG_FORMAT = "%H\x1f%h\x1f%an\x1f%aI\x1f%s";
@@ -101,6 +110,7 @@ module.exports = {
   parseGitPorcelain,
   COMMIT_MESSAGE_RELATIVE,
   readPendingCommitMessage,
+  pendingCommitMessageMtime,
   GIT_LOG_FORMAT,
   parseGitLogLine,
   formatAutoCommitTimestamp,

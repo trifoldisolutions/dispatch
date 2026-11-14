@@ -203,6 +203,22 @@ function isEditingProject(entry, list) {
   return list === "entries" ? editingKey.port === entry.port : editingKey.name === entry.name;
 }
 
+// The project's category, or Unassigned, as a button: it opens the
+// Switcher (public/js/app/switchboard.js), where the project can be
+// dragged to another port or category.
+function buildCategoryBadge(entry, list) {
+  const category = list === "entries" ? entry.category : "unassigned";
+  const badge = document.createElement("button");
+  badge.type = "button";
+  badge.className = "project-badge project-badge-btn" + (list === "entries" ? ` cat-${category}` : "");
+  badge.title = "See every project by category, and drag one to another port";
+  badge.textContent = `${CATEGORY_ICONS[category]} ${category}`;
+  badge.addEventListener("click", () => {
+    document.dispatchEvent(new CustomEvent("dispatch:switch-board", { detail: { project: entry.name } }));
+  });
+  return badge;
+}
+
 // Who the project is — category, folder, description, when it was
 // created/last edited — on the left, its changes and tasks in the middle
 // (see buildProjectActivity), its staff on the right (see
@@ -222,12 +238,8 @@ function buildProjectHeader(entry, index, list) {
 
   const meta = document.createElement("div");
   meta.className = "project-meta";
-  meta.innerHTML =
-    list === "entries"
-      ? `<span class="project-badge cat-${entry.category}">${CATEGORY_ICONS[entry.category]} ${entry.category}</span>`
-      : list === "self"
-      ? `<span class="project-badge">🎛️ Dashboard</span>`
-      : `<span class="project-badge">${CATEGORY_ICONS.unassigned} Unassigned</span>`;
+  if (list === "self") meta.innerHTML = `<span class="project-badge">🎛️ Dashboard</span>`;
+  else meta.appendChild(buildCategoryBadge(entry, list));
   meta.appendChild(buildPathButton(entry));
   if (list !== "unassigned") meta.appendChild(buildSiteLink(entry));
   if (entry.url) meta.appendChild(buildLiveSiteLink(entry));
@@ -340,7 +352,7 @@ function buildProjectBarTools(entry, index, list, header) {
   const group = document.createElement("div");
   group.className = "project-bar-tools";
   if (list === "entries") {
-    group.appendChild(buildPortSwitchDropdown(entry, header));
+    group.appendChild(buildSwitchButton(entry));
     const ejectBtn = buildProjectActionButton(ICON_EJECT, "Eject", `Eject project from port ${entry.port}`, () =>
       unassignEntry(entry, index, header)
     );
@@ -381,138 +393,13 @@ async function syncProjectPage() {
   }
 }
 
-// Switch: opens buildPortSwitchMenu, scrolled to this project's own port.
-// Off while the Edit form is open on this project — the form has its own
-// port field, and keeps track of the project by the port it had.
-function buildPortSwitchDropdown(entry, header) {
-  const wrap = document.createElement("div");
-  wrap.className = "dropdown port-switch" + (portSwitchOpen ? " open" : "");
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.className = "icon-btn project-switch-btn";
-  toggle.title = "Switch project to another port";
-  toggle.setAttribute("aria-expanded", String(portSwitchOpen));
-  toggle.innerHTML = `${ICON_SWITCH}<span>Switch</span>`;
-  toggle.disabled = isEditingProject(entry, "entries");
-  toggle.addEventListener("click", (e) => {
-    e.stopPropagation();
-    portSwitchOpen = !portSwitchOpen;
-    openTagsDropdownFor = null;
-    openStaffMenu = null;
-    closeJournalCalendar();
-    closeTaskCalendar();
-    taskDueCalendarOpen = false;
-    render();
-    const menu = portSwitchOpen && document.querySelector(".port-switch-menu");
-    const current = menu && menu.querySelector(".active");
-    if (current) menu.scrollTop = current.offsetTop - (menu.clientHeight - current.offsetHeight) / 2;
+// Switch: opens the Switcher (public/js/app/switchboard.js) with this
+// project outlined and focused, so it can be dragged, or picked up with
+// Enter, onto another port.
+function buildSwitchButton(entry) {
+  return buildProjectActionButton(ICON_SWITCH, "Switch", "Move this project to another port or category", () => {
+    document.dispatchEvent(new CustomEvent("dispatch:switch-board", { detail: { project: entry.name } }));
   });
-  wrap.appendChild(toggle);
-  if (portSwitchOpen) wrap.appendChild(buildPortSwitchMenu(entry, header));
-  return wrap;
-}
-
-// The ports `entry` could move to, under a heading per category: every port
-// of a capped category, and the unlimited one's up to one past its last
-// taken port. Each shows who has it, or that it's free — except that one
-// past the last, an open slot shown with a placeholder name and Insert:
-// there's always another after it, so it isn't one of the free ports the
-// toolbar counts (see countFreePorts).
-function buildPortSwitchMenu(entry, header) {
-  const menu = document.createElement("div");
-  menu.className = "dropdown-menu port-switch-menu";
-  menu.dataset.scrollKey = "port-switch"; // see renderProjectPage
-  const holders = new Map(entries.map((e) => [Number(e.port), e]));
-  for (const cat of CATEGORIES) {
-    const range = categoryPortRange(cat);
-    const heading = document.createElement("div");
-    heading.className = "port-switch-heading";
-    heading.innerHTML =
-      `<span>${CATEGORY_ICONS[cat]} <span class="port-switch-cat">${cat}</span></span>` +
-      `<span class="port-switch-range">${formatPortRange(range)}</span>`;
-    menu.appendChild(heading);
-    let last = range.end;
-    let end = null;
-    if (last === Infinity) {
-      const taken = entries.filter((e) => e.category === cat).map((e) => Number(e.port));
-      last = end = taken.length > 0 ? Math.max(...taken) + 1 : range.start;
-    }
-    for (let port = range.start; port <= last; port++) {
-      menu.appendChild(buildPortSwitchOption(entry, port, holders.get(port) || null, header, port === end));
-    }
-  }
-  return menu;
-}
-
-function buildPortSwitchOption(entry, port, holder, header, isEnd) {
-  const current = holder === entry;
-  const category = categoryForPort(port);
-  const opt = document.createElement("button");
-  opt.type = "button";
-  opt.className = `dropdown-option port-switch-option cat-${category}` + (current ? " active" : "");
-  opt.disabled = current;
-  opt.title = current
-    ? "This project's port"
-    : holder
-    ? `Swap ports with ${holder.name}`
-    : isEnd
-    ? `Insert ${entry.name} at ${port}, after ${capitalize(category)}'s last project`
-    : `Move to port ${port}`;
-  const portEl = document.createElement("span");
-  portEl.className = "port-switch-port";
-  portEl.textContent = port;
-  const holderEl = document.createElement("span");
-  holderEl.className = "port-switch-holder" + (holder ? "" : isEnd ? " end" : " free");
-  holderEl.textContent = holder ? holder.name : isEnd ? "Next port" : "Free";
-  const hint = document.createElement("span");
-  hint.className = "port-switch-hint";
-  hint.textContent = current ? "✓" : holder ? "Swap" : isEnd ? "Insert" : "";
-  opt.append(portEl, holderEl, hint);
-  opt.addEventListener("click", (e) => {
-    e.stopPropagation();
-    portSwitchOpen = false;
-    switchProjectPort(entry, port, holder, header);
-  });
-  return opt;
-}
-
-// Moves `entry` to `port`: a free one, or `holder`'s, in which case the two
-// swap — `holder` takes `entry`'s old port, after a confirm, since it moves a
-// project you may not be looking at. Only those two ever move, and each one's
-// category follows its new port, the same as a category switch or a drop on
-// the dashboard (see handlePortDrop).
-async function switchProjectPort(entry, port, holder, header) {
-  const oldPort = Number(entry.port);
-  if (holder) {
-    const confirmed = await customConfirm(
-      `Swap ports with "${holder.name}"? "${entry.name}" moves to ${port} (${categoryForPort(port)}) ` +
-        `and "${holder.name}" to ${oldPort} (${categoryForPort(oldPort)}).`
-    );
-    if (!confirmed) {
-      render();
-      return;
-    }
-  }
-  if (!(await confirmPortsFree([oldPort, port]))) {
-    render();
-    return;
-  }
-  const moves = [{ entry, port }];
-  if (holder) moves.push({ entry: holder, port: oldPort });
-  const previous = moves.map((m) => ({ entry: m.entry, port: m.entry.port, category: m.entry.category }));
-  for (const m of moves) {
-    m.entry.port = String(m.port);
-    m.entry.category = categoryForPort(m.port);
-  }
-  markCardSaving(header);
-  const ok = await persist();
-  if (!ok) {
-    for (const prev of previous) {
-      prev.entry.port = prev.port;
-      prev.entry.category = prev.category;
-    }
-  }
-  render();
 }
 
 // The chip after the folder path that opens the project's local site in a
@@ -1082,6 +969,13 @@ function applyRunButtonState(btn, info) {
   btn.title = `Run ${btn.dataset.project} (npm run dev, plus tw if present)`;
 }
 
+// Whether its Run button says Stop: Dispatch's run of it is running, or,
+// with no run of Dispatch's, something answers on its port.
+function isProjectRunning(entry) {
+  const managed = projectRunStatus[entry.name];
+  return (managed && managed.status === "running") || (!managed && !!portLiveStatus[String(entry.port)]);
+}
+
 // Starts/stops a project's dev (and tw, if present) processes on the port
 // it's currently assigned to. Warns first if that port already looks live —
 // starting anyway would likely fail to bind.
@@ -1095,8 +989,7 @@ function buildRunButton(entry) {
 
   btn.addEventListener("click", async (e) => {
     e.stopPropagation();
-    const managed = projectRunStatus[entry.name];
-    const isRunning = (managed && managed.status === "running") || (!managed && !!portLiveStatus[String(entry.port)]);
+    const isRunning = isProjectRunning(entry);
     const card = projectViewEl.querySelector(".project-header");
 
     if (!isRunning) {
@@ -1120,8 +1013,7 @@ function buildRunButton(entry) {
     try {
       if (isRunning) {
         await stopProject(entry.name);
-        delete projectRunStatus[entry.name];
-        portLiveStatus[String(entry.port)] = false; // optimistic; next poll corrects if the kill didn't take
+        await untilStatus(() => !isProjectRunning(entry));
       } else {
         await startProject(entry.name);
         projectRunStatus[entry.name] = { status: "running", error: null, twError: null };

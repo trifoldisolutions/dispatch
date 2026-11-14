@@ -17,6 +17,7 @@ const project = (name) => encodeURIComponent(name);
 
 export const getMyProjects = () => request("GET", "/api/me/projects");
 export const getMyTasks = () => request("GET", "/api/me/tasks");
+export const getMyPushes = () => request("GET", "/api/me/pushes");
 // all: everyone you work with, not just the first few (the People page's).
 export const getPeople = (q = "", role = "", all = false) => {
   const params = new URLSearchParams(Object.entries({ q, role, all: all ? "1" : "" }).filter(([, value]) => value));

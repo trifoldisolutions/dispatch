@@ -18,9 +18,10 @@ function ensureTasksLoaded(project) {
     });
 }
 
-// The Tasks panel's content: a flat to-do list (newest first) with a checkbox
-// to mark each one done, plus per-row archive/delete actions, a filter bar
-// above it, and a composer at the bottom to add a new one. Archived tasks
+// The Tasks panel's content: a to-do list (newest first, open tasks above a
+// Done section) with a checkbox to mark each one done, plus per-row
+// archive/delete actions, a filter bar above it, and a composer at the
+// bottom to add a new one. Archived tasks
 // stay in tasks.json and are left out of this list until the header's
 // "archived" box is checked, where each has an Unarchive button instead —
 // so of the two only Delete is something the tab itself can't undo.
@@ -63,7 +64,7 @@ function buildTasksPanel(entry, panel) {
           buildPanelEmpty({
             icon: ICON_SEARCH,
             title: "No matching tasks",
-            text: "No task's ID, title, description, tags or dates match this filter.",
+            text: "No task's ID, title, description, tags, priority or dates match this filter.",
             action: { label: "Clear filter", onClick: filterBar.clear },
           })
         );
@@ -71,8 +72,28 @@ function buildTasksPanel(entry, panel) {
         const { searched, others } = splitOffSearchedTasks(matching, taskFilter.query);
         const addRows = (tasks) => tasks.forEach((task) => listEl.appendChild(buildTaskRow(entry, task, panel)));
         addRows(searched);
-        if (searched.length > 0 && others.length > 0) listEl.appendChild(buildRelatedTasksLabel(others.length));
-        addRows(others);
+        if (searched.length > 0 && others.length > 0) listEl.appendChild(buildTaskListLabel(`Related - ${others.length}`));
+        // Open tasks first, then the done ones and the archived ones, each
+        // under a label that folds it (see buildTaskSectionToggle), so
+        // marking a task done moves it down, out of the way.
+        for (const status of TASK_STATUSES) {
+          const tasks = others.filter((task) => taskStatus(task) === status);
+          if (tasks.length === 0) continue;
+          if (status !== "open") {
+            const collapsed = taskSectionsCollapsed.has(status);
+            listEl.appendChild(
+              buildTaskSectionToggle(status, `${TASK_SECTION_LABELS[status]} - ${tasks.length}`, collapsed, () => {
+                if (collapsed) taskSectionsCollapsed.delete(status);
+                else taskSectionsCollapsed.add(status);
+                fillList();
+                const toggle = listEl.querySelector(`[data-section="${status}"]`);
+                if (toggle) toggle.focus();
+              })
+            );
+            if (collapsed) continue;
+          }
+          addRows(tasks);
+        }
       }
       filterBar.updateStatus(matching.length);
     }
@@ -118,7 +139,7 @@ function isTaskOverdue(task) {
 }
 
 function isTaskFilterActive(filter) {
-  return filter.query.trim() !== "" || filter.tags.size > 0 || filter.start !== null;
+  return filter.query.trim() !== "" || filter.tags.size > 0 || filter.priorities.size > 0 || filter.start !== null;
 }
 
 // The day a task counts as for a date field: its due date (null when it has
@@ -130,7 +151,9 @@ function taskFilterDate(task, dateField) {
 // Every filter that's set must match (AND). The search text is split into
 // words, each of which has to appear somewhere in the task's id, title,
 // description or tag names, in any order; picked tags must all be on the
-// task; a date range must take in its due date, or the day it was added.
+// task; the priority it shows must be one of the checked ones (a done task
+// shows none); a date range must take in its due date, or the day it was
+// added.
 function taskMatchesFilter(task, filter) {
   const terms = filterTerms(filter.query);
   if (terms.length > 0) {
@@ -143,6 +166,7 @@ function taskMatchesFilter(task, filter) {
       if (!taskTags.has(tag.toLowerCase())) return false;
     }
   }
+  if (filter.priorities.size > 0 && !filter.priorities.has(shownTaskPriority(task))) return false;
   if (filter.start !== null) {
     const taskDate = taskFilterDate(task, filter.dateField);
     if (taskDate === null || taskDate < filter.start || taskDate > filter.end) return false;
@@ -159,11 +183,35 @@ function splitOffSearchedTasks(tasks, query) {
   return { searched: tasks.filter(isSearched), others: tasks.filter((task) => !isSearched(task)) };
 }
 
-function buildRelatedTasksLabel(count) {
+// The labels heading the list's done and archived sections (see
+// buildTasksPanel); open tasks lead the list without one.
+const TASK_SECTION_LABELS = { done: "Done", archived: "Archived" };
+
+// Heads the tasks that mention a searched ID ("Related - 3"), under the
+// task that has it.
+function buildTaskListLabel(text) {
   const label = document.createElement("div");
   label.className = "task-list-label";
-  label.textContent = `Related - ${count}`;
+  label.textContent = text;
   return label;
+}
+
+// The same label over the done and archived sections ("Done - 5"), as a
+// button that folds the section shut or open again, with a dropdown's
+// caret before the text: pointing down at the tasks while they're shut,
+// flipped up once they show.
+function buildTaskSectionToggle(status, text, collapsed, onToggle) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "task-list-label task-list-toggle" + (collapsed ? " collapsed" : "");
+  btn.dataset.section = status;
+  btn.setAttribute("aria-expanded", String(!collapsed));
+  btn.innerHTML =
+    `<svg class="dropdown-caret" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true">` +
+    `<path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  btn.append(text);
+  btn.addEventListener("click", onToggle);
+  return btn;
 }
 
 // --- Tasks date filter: the filter field's date button opens the same
@@ -300,19 +348,76 @@ function buildTaskDateDropdown(name, tasks) {
         openTagsDropdownFor = null;
         closeJournalCalendar();
         taskDueCalendarOpen = false;
-        portSwitchOpen = false;
+        taskPriorityMenuOpen = false;
+        taskPriorityFilterOpen = false;
       }
     },
     buildCalendar: () => buildTaskCalendar(name, tasks),
   });
 }
 
+// The Tasks filter field's priority segment: "Priority", or "Priority (2)"
+// once levels are checked, over the composer's levels.
+// Checked like the tags menu, but a task has one priority, so it matches
+// any checked level rather than all of them (see taskMatchesFilter).
+function buildTaskPriorityFilterDropdown() {
+  const picked = taskFilter.priorities;
+  const dropdown = document.createElement("div");
+  dropdown.className = "dropdown task-priority-filter-dropdown" + (taskPriorityFilterOpen ? " open" : "");
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "dropdown-toggle" + (picked.size > 0 ? " active" : "");
+  toggle.setAttribute("aria-expanded", String(taskPriorityFilterOpen));
+  toggle.title = "Filter by priority";
+  toggle.innerHTML =
+    `<span>Priority${picked.size ? ` (${picked.size})` : ""}</span>` +
+    `<svg class="dropdown-caret" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true">` +
+    `<path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    taskPriorityFilterOpen = !taskPriorityFilterOpen;
+    openTagsDropdownFor = null;
+    closeJournalCalendar();
+    closeTaskCalendar();
+    taskDueCalendarOpen = false;
+    taskPriorityMenuOpen = false;
+    openStaffMenu = null;
+    render();
+  });
+  dropdown.appendChild(toggle);
+
+  if (taskPriorityFilterOpen) {
+    const menu = document.createElement("div");
+    menu.className = "dropdown-menu";
+    menu.setAttribute("role", "menu");
+    const addOption = (value, text) => {
+      const on = picked.has(value);
+      const opt = document.createElement("button");
+      opt.type = "button";
+      opt.className = "dropdown-option";
+      opt.setAttribute("role", "menuitemcheckbox");
+      opt.setAttribute("aria-checked", String(on));
+      opt.innerHTML = `<span class="dropdown-option-content">${checkboxIcon(on)}<span class="label">${text}</span></span>`;
+      opt.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (on) picked.delete(value);
+        else picked.add(value);
+        render();
+      });
+      menu.appendChild(opt);
+    };
+    for (const [value, text] of TASK_PRIORITIES) addOption(value, text);
+    dropdown.appendChild(menu);
+  }
+  return dropdown;
+}
+
 // The bar above the task list: the search text, a "3 results" count and a
-// clear-all × (those two only while a filter is set), with the tags
-// dropdown and the date button as segments at its right end. Typing applies
-// through `onChange` (re-filling just the list — see buildTasksPanel); the
-// dropdowns and × go through a full render() like every other dropdown,
-// which rebuilds this bar from taskFilter anyway.
+// clear-all × (those two only while a filter is set), with the tags and
+// priority dropdowns and the date button as segments at its right end.
+// Typing applies through `onChange` (re-filling just the list — see
+// buildTasksPanel); the dropdowns and × go through a full render() like
+// every other dropdown, which rebuilds this bar from taskFilter anyway.
 function buildTaskFilterBar(name, tasks, knownTags, onChange) {
   const tagsDropdown = buildTagsDropdown(knownTags, taskFilter.tags, "filter", { allowNewTags: false });
   tagsDropdown.querySelector(".tags-toggle").classList.toggle("active", taskFilter.tags.size > 0);
@@ -329,8 +434,9 @@ function buildTaskFilterBar(name, tasks, knownTags, onChange) {
       taskFilter = emptyTaskFilter(taskFilter.dateField);
       closeTaskCalendar();
       openTagsDropdownFor = null;
+      taskPriorityFilterOpen = false;
     },
-    segments: [tagsDropdown, buildTaskDateDropdown(name, tasks)],
+    segments: [tagsDropdown, buildTaskPriorityFilterDropdown(), buildTaskDateDropdown(name, tasks)],
   });
   return {
     el: filter.el,
@@ -387,7 +493,8 @@ function buildTagsDropdown(knownTags, selected, dropdownKey, { allowNewTags = tr
     closeJournalCalendar();
     closeTaskCalendar();
     taskDueCalendarOpen = false;
-    portSwitchOpen = false;
+    taskPriorityMenuOpen = false;
+    taskPriorityFilterOpen = false;
     openStaffMenu = null;
     render();
   });
@@ -587,6 +694,14 @@ function buildTaskRow(entry, task, panel) {
   const meta = document.createElement("div");
   meta.className = "task-meta";
   meta.appendChild(buildTaskCodeBadge(task, panel));
+  const priority = shownTaskPriority(task);
+  if (priority) {
+    const priorityEl = document.createElement("span");
+    priorityEl.className = `task-priority task-priority-${priority}`;
+    priorityEl.textContent = taskPriorityLabel(priority);
+    priorityEl.title = `${taskPriorityLabel(priority)} priority`;
+    meta.appendChild(priorityEl);
+  }
   (task.tags || []).forEach((tag) => {
     const tagEl = document.createElement("span");
     tagEl.className = "task-tag";
@@ -617,8 +732,10 @@ function buildTaskRow(entry, task, panel) {
     taskTitleDraft[entry.name] = task.title;
     taskDescriptionDraft[entry.name] = task.description || "";
     taskDueDraft[entry.name] = task.dueDate || "";
+    taskPriorityDraft[entry.name] = task.priority || "";
     taskTagsDraft[entry.name] = new Set(task.tags || []);
     taskDueCalendarOpen = false;
+    taskPriorityMenuOpen = false;
     render();
     requestAnimationFrame(() => {
       const el = document.querySelector(".task-title-input");
@@ -666,6 +783,31 @@ function buildTaskRow(entry, task, panel) {
 
 const TASK_TITLE_MAX_LENGTH = 80;
 const TASK_DESCRIPTION_MAX_LENGTH = 500;
+// Lowest to highest, as the server's TASK_PRIORITIES in services/tasks.js.
+const TASK_PRIORITIES = [
+  ["low", "Low"],
+  ["medium", "Medium"],
+  ["high", "High"],
+  ["urgent", "Urgent"],
+];
+
+function taskPriorityLabel(value) {
+  const found = TASK_PRIORITIES.find(([v]) => v === value);
+  return found ? found[1] : value;
+}
+
+// The priority a task shows, and the priority filter goes by: none once
+// it's done. The task keeps it, so marking it not done brings it back.
+function shownTaskPriority(task) {
+  return task.done ? null : task.priority || null;
+}
+
+// Whether the composer's draft can be sent: it needs a title, and a new task
+// needs a priority too. Editing a task from before priorities existed can
+// save it without one.
+function canSubmitTask(name, isEditing) {
+  return Boolean((taskTitleDraft[name] || "").trim()) && (isEditing || Boolean(taskPriorityDraft[name]));
+}
 
 // Clears the composer's draft state for `name` and exits edit mode — called
 // when an edit is explicitly canceled, or abandoned by leaving the page.
@@ -677,17 +819,20 @@ function cancelTaskEdit(name) {
   taskTitleDraft[name] = "";
   taskDescriptionDraft[name] = "";
   taskDueDraft[name] = "";
+  taskPriorityDraft[name] = "";
   taskTagsDraft[name] = new Set();
   taskDueCalendarOpen = false;
+  taskPriorityMenuOpen = false;
 }
 
 // The Tasks panel's bottom composer: a one-line title input (required — Enter
 // there moves on to the description) above a description textarea
-// (optional) whose bottom strip holds the optional due date, the tags
-// dropdown, and the Add/Save button; Ctrl+Enter in either field submits.
-// taskTitleDraft/taskDescriptionDraft/taskDueDraft/taskTagsDraft hold the
-// in-progress values at module level so a full render() triggered by
-// something else never wipes what's mid-entry.
+// (optional) whose bottom strip holds the optional due date, the priority
+// (none picked at first, and required to add a task), the tags dropdown,
+// and the Add/Save button; Ctrl+Enter in either field submits.
+// taskTitleDraft/taskDescriptionDraft/taskDueDraft/taskPriorityDraft/
+// taskTagsDraft hold the in-progress values at module level so a full
+// render() triggered by something else never wipes what's mid-entry.
 // Doubles as the edit form: clicking a task row's edit button loads that
 // task's fields in here (see buildTaskRow) instead of editing inline, so
 // there's exactly one place with this add/edit UI rather than two.
@@ -735,10 +880,12 @@ function buildTaskComposer(entry, panel) {
   footerRow.className = "task-composer-footer-row";
 
   footerRow.appendChild(buildTaskDueDropdown(entry.name));
+  footerRow.appendChild(buildTaskPriorityDropdown(entry.name));
 
   const knownTags = (taskCache[entry.name] && taskCache[entry.name].tags) || [];
   const tagsDropdown = buildTagsDropdown(knownTags, getTaskTagsDraft(entry.name), "composer");
   tagsDropdown.classList.add("tags-dropdown-grow");
+  tagsDropdown.querySelector(".tags-toggle").classList.toggle("active", getTaskTagsDraft(entry.name).size > 0);
   footerRow.appendChild(tagsDropdown);
 
   if (isEditing) {
@@ -758,14 +905,31 @@ function buildTaskComposer(entry, panel) {
   addBtn.type = "button";
   addBtn.className = "task-add-btn";
   addBtn.textContent = isEditing ? "Save changes" : "Add task";
-  addBtn.disabled = !titleInput.value.trim();
+  function updateAddBtn() {
+    addBtn.disabled = !canSubmitTask(entry.name, isEditing);
+    addBtn.title = !isEditing && !taskPriorityDraft[entry.name] ? "Pick a priority to add this task" : "";
+  }
+  updateAddBtn();
   addBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
     addBtn.disabled = true;
     await submitTask(entry, panel);
-    addBtn.disabled = !(taskTitleDraft[entry.name] || "").trim();
+    updateAddBtn();
   });
   footerRow.appendChild(addBtn);
+
+  // The strip below the textarea is part of the box: a click in its empty
+  // space (or on the counter) focuses the textarea, and stays in here as a
+  // click in the textarea does, rather than closing an open dropdown.
+  const inEmptyStrip = (target) => target === footer || target === footerRow || target === counter;
+  footer.addEventListener("mousedown", (e) => {
+    if (!inEmptyStrip(e.target)) return;
+    e.preventDefault(); // keeps the textarea from losing focus first
+    input.focus();
+  });
+  footer.addEventListener("click", (e) => {
+    if (inEmptyStrip(e.target)) e.stopPropagation();
+  });
 
   footer.appendChild(footerRow);
   inputWrap.appendChild(footer);
@@ -790,7 +954,7 @@ function buildTaskComposer(entry, panel) {
   titleInput.addEventListener("click", (e) => e.stopPropagation());
   titleInput.addEventListener("input", () => {
     taskTitleDraft[entry.name] = titleInput.value;
-    addBtn.disabled = !titleInput.value.trim();
+    updateAddBtn();
   });
   titleInput.addEventListener("keydown", (e) => {
     if (handleSubmitOrCancelKey(e)) return;
@@ -808,6 +972,67 @@ function buildTaskComposer(entry, panel) {
   input.addEventListener("keydown", handleSubmitOrCancelKey);
 
   return composer;
+}
+
+// The composer's priority, beside its due date: "Priority" until a level is
+// picked from its menu, then that level. Add task stays disabled until then
+// (see canSubmitTask). Like the due date, the pick lives in
+// taskPriorityDraft with the rest of the draft.
+function buildTaskPriorityDropdown(name) {
+  const picked = taskPriorityDraft[name] || "";
+  const dropdown = document.createElement("div");
+  dropdown.className = "dropdown task-priority-dropdown" + (taskPriorityMenuOpen ? " open" : "");
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "dropdown-toggle task-priority-toggle" + (picked ? ` active task-priority-${picked}` : "");
+  toggle.setAttribute("aria-expanded", String(taskPriorityMenuOpen));
+  toggle.title = picked ? `${taskPriorityLabel(picked)} priority` : "Priority (required to add a task)";
+  const label = document.createElement("span");
+  label.className = "task-priority-label";
+  label.textContent = picked ? taskPriorityLabel(picked) : "Priority";
+  toggle.appendChild(label);
+  toggle.insertAdjacentHTML(
+    "beforeend",
+    `<svg class="dropdown-caret" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true">` +
+      `<path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+  );
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    taskPriorityMenuOpen = !taskPriorityMenuOpen;
+    taskPriorityFilterOpen = false;
+    openTagsDropdownFor = null;
+    closeJournalCalendar();
+    closeTaskCalendar();
+    taskDueCalendarOpen = false;
+    render();
+  });
+  dropdown.appendChild(toggle);
+
+  if (taskPriorityMenuOpen) {
+    // Built like the tags menu's options, with a radio in place of the
+    // checkbox since a task has only one priority.
+    const menu = document.createElement("div");
+    menu.className = "dropdown-menu";
+    menu.setAttribute("role", "menu");
+    for (const [value, text] of TASK_PRIORITIES) {
+      const on = value === picked;
+      const opt = document.createElement("button");
+      opt.type = "button";
+      opt.className = "dropdown-option";
+      opt.setAttribute("role", "menuitemradio");
+      opt.setAttribute("aria-checked", String(on));
+      opt.innerHTML = `<span class="dropdown-option-content">${radioIcon(on)}<span class="label">${text}</span></span>`;
+      opt.addEventListener("click", (e) => {
+        e.stopPropagation();
+        taskPriorityDraft[name] = value;
+        taskPriorityMenuOpen = false;
+        render();
+      });
+      menu.appendChild(opt);
+    }
+    dropdown.appendChild(menu);
+  }
+  return dropdown;
 }
 
 // The composer's due date: a calendar icon and "Due date", or the picked
@@ -840,12 +1065,13 @@ function buildTaskDueDropdown(name) {
       taskDueCalendarOpen = false;
     } else {
       taskDueCalendarOpen = true;
+      taskPriorityMenuOpen = false;
+      taskPriorityFilterOpen = false;
       const shown = parseDateOnly(due || toDateOnlyString(new Date()));
       taskDueCalendarMonth = { year: shown.getFullYear(), month: shown.getMonth() };
       openTagsDropdownFor = null;
       closeJournalCalendar();
       closeTaskCalendar();
-      portSwitchOpen = false;
     }
     render();
   });
@@ -897,8 +1123,7 @@ function buildTaskDueCalendar(name, due) {
 async function submitTask(entry, panel) {
   const title = (taskTitleDraft[entry.name] || "").trim();
   const description = (taskDescriptionDraft[entry.name] || "").trim();
-  if (!title || taskSubmitting.has(entry.name)) return;
-  taskSubmitting.add(entry.name);
+  const priority = taskPriorityDraft[entry.name] || null;
   // Editing an existing task is a PATCH against its own id — disable that
   // row for the duration, same as any other in-flight change to it. (It's
   // already showing disabled from being loaded in the composer at all —
@@ -906,23 +1131,39 @@ async function submitTask(entry, panel) {
   // failed save, when editingTaskId is still set but taskUpdating no longer
   // is; refreshTaskRowDisabled re-checks both, so it stays disabled either way.)
   const editingId = editingTaskId !== null && editingTaskProject === entry.name ? editingTaskId : null;
+  if (taskSubmitting.has(entry.name)) return;
+  // The Add button is disabled without a priority, but Ctrl+Enter isn't, so
+  // say why nothing happened.
+  if (title && !editingId && !priority) return showCardError(panel, "Pick a priority to add this task.");
+  if (!canSubmitTask(entry.name, Boolean(editingId))) return;
+  taskSubmitting.add(entry.name);
   if (editingId) taskUpdating.add(editingId);
   try {
     const tags = Array.from(getTaskTagsDraft(entry.name));
     const dueDate = taskDueDraft[entry.name] || null;
+    // Cancelling at the urgent limit (a null result) keeps the draft in the
+    // composer, to save once one of the urgent tasks is settled.
     if (editingId) {
-      taskCache[entry.name] = await patchTask(entry.name, editingId, { title, description, dueDate, tags });
+      // A task from before priorities existed keeps none unless one is picked.
+      const changes = { title, description, dueDate, tags, ...(priority && { priority }) };
+      const tasks = await saveWithinUrgentLimit(entry.name, () => patchTask(entry.name, editingId, changes));
+      taskUpdating.delete(editingId);
+      if (!tasks) return refreshTaskRowDisabled(editingId);
+      taskCache[entry.name] = tasks;
       editingTaskId = null;
       editingTaskProject = null;
-      taskUpdating.delete(editingId);
     } else {
-      taskCache[entry.name] = await postTask(entry.name, title, description, dueDate, tags);
+      const tasks = await saveWithinUrgentLimit(entry.name, () => postTask(entry.name, title, description, dueDate, priority, tags));
+      if (!tasks) return;
+      taskCache[entry.name] = tasks;
     }
     taskTitleDraft[entry.name] = "";
     taskDescriptionDraft[entry.name] = "";
     taskDueDraft[entry.name] = "";
+    taskPriorityDraft[entry.name] = "";
     taskTagsDraft[entry.name] = new Set();
     taskDueCalendarOpen = false;
+    taskPriorityMenuOpen = false;
     render();
   } catch (err) {
     if (editingId) {
@@ -962,7 +1203,8 @@ async function updateTask(entry, id, changes, panel) {
   taskUpdating.add(id);
   refreshTaskRowDisabled(id);
   try {
-    taskCache[entry.name] = await patchTask(entry.name, id, changes);
+    const tasks = await saveWithinUrgentLimit(entry.name, () => patchTask(entry.name, id, changes));
+    if (tasks) taskCache[entry.name] = tasks; // cancelled at the urgent limit otherwise, and render() puts the checkbox back
     taskUpdating.delete(id);
     render();
   } catch (err) {
@@ -970,6 +1212,90 @@ async function updateTask(entry, id, changes, panel) {
     refreshTaskRowDisabled(id);
     showCardError(panel, err.message);
   }
+}
+
+// Runs one task save, which resolves the server's new task list. When the
+// server refuses it for the urgent limit (urgentLimitRefusal in
+// services/tasks.js), asks which urgent task to settle, saves that, and
+// tries again, as many times as the project is still over. Resolves the
+// task list, or null if the person cancels.
+async function saveWithinUrgentLimit(name, save) {
+  for (;;) {
+    try {
+      return await save();
+    } catch (err) {
+      if (!err.urgentTasks) throw err;
+      const pick = await chooseUrgentTaskToSettle(err.urgentTasks);
+      if (!pick) return null;
+      taskCache[name] = await patchTask(name, pick.id, pick.changes);
+      render();
+    }
+  }
+}
+
+// Lists the project's urgent tasks, each with Lower to high and Mark done,
+// in the confirm dialog's overlay, so Escape and clicking outside cancel it
+// as they do a confirm. Resolves { id, changes } for the button picked, or
+// false.
+function chooseUrgentTaskToSettle(urgentTasks) {
+  return new Promise((resolve) => {
+    activeDialog = { resolve };
+    const panel = document.getElementById("confirm-panel");
+    panel.innerHTML = "";
+    document.getElementById("confirm-overlay").hidden = false;
+    updateBodyScrollLock();
+
+    const msg = document.createElement("p");
+    msg.className = "confirm-message";
+    msg.textContent = `This project already has ${urgentTasks.length} urgent tasks.`;
+    const hint = document.createElement("p");
+    hint.className = "confirm-hint";
+    hint.textContent = "Mark one of them done or lower it to high to make room for another urgent task.";
+    panel.append(msg, hint);
+
+    const list = document.createElement("div");
+    list.className = "urgent-limit-list";
+    urgentTasks.forEach((task) => {
+      const item = document.createElement("div");
+      item.className = "urgent-limit-task";
+      const head = document.createElement("div");
+      head.className = "urgent-limit-head";
+      const code = document.createElement("span");
+      code.className = "task-code";
+      code.textContent = task.id;
+      const title = document.createElement("span");
+      title.className = "urgent-limit-title";
+      title.textContent = task.title;
+      head.append(code, title);
+      const actions = document.createElement("div");
+      actions.className = "urgent-limit-actions";
+      [
+        ["Lower to high", { priority: "high" }],
+        ["Mark done", { done: true }],
+      ].forEach(([label, changes]) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "cancel-btn";
+        btn.textContent = label;
+        btn.addEventListener("click", () => resolveDialog({ id: task.id, changes }));
+        actions.appendChild(btn);
+      });
+      item.append(head, actions);
+      list.appendChild(item);
+    });
+    panel.appendChild(list);
+
+    const actions = document.createElement("div");
+    actions.className = "confirm-actions";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "cancel-btn";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => resolveDialog(false));
+    actions.appendChild(cancelBtn);
+    panel.appendChild(actions);
+    requestAnimationFrame(() => cancelBtn.focus());
+  });
 }
 
 // Unlike archiving, deleting a task can't be undone from the UI, so this

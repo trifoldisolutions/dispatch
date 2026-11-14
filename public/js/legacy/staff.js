@@ -266,10 +266,11 @@ function buildStaffMenu(menuKey) {
     e.stopPropagation();
     openStaffMenu = isOpen ? null : menuKey;
     openTagsDropdownFor = null;
-    portSwitchOpen = false;
     closeJournalCalendar();
     closeTaskCalendar();
     taskDueCalendarOpen = false;
+    taskPriorityMenuOpen = false;
+    taskPriorityFilterOpen = false;
     render();
   });
   wrap.appendChild(toggleBtn);

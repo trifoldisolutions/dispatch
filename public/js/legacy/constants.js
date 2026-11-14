@@ -66,6 +66,18 @@ const ICON_CHECKBOX_CHECKED =
   '<path fill="currentColor" ' +
   'd="M9.367 2.25h5.266c1.092 0 1.958 0 2.655.057c.714.058 1.317.18 1.869.46a4.75 4.75 0 0 1 2.075 2.077c.281.55.403 1.154.461 1.868c.057.697.057 1.563.057 2.655v5.266c0 1.092 0 1.958-.057 2.655c-.058.714-.18 1.317-.46 1.869a4.75 4.75 0 0 1-2.076 2.075c-.552.281-1.155.403-1.869.461c-.697.057-1.563.057-2.655.057H9.367c-1.092 0-1.958 0-2.655-.057c-.714-.058-1.317-.18-1.868-.46a4.75 4.75 0 0 1-2.076-2.076c-.281-.552-.403-1.155-.461-1.869c-.057-.697-.057-1.563-.057-2.655V9.367c0-1.092 0-1.958.057-2.655c.058-.714.18-1.317.46-1.868a4.75 4.75 0 0 1 2.077-2.076c.55-.281 1.154-.403 1.868-.461c.697-.057 1.563-.057 2.655-.057m6.406 6.442a.75.75 0 0 0-1.048.169l-3.597 4.981a.25.25 0 0 1-.391.018l-1.506-1.72a.75.75 0 1 0-1.129.987l1.506 1.721a1.75 1.75 0 0 0 2.736-.128l3.597-4.98a.75.75 0 0 0-.168-1.048" />' +
   "</svg>";
+// Every radio button's unchecked and checked states (see radioIcon), drawn to
+// match the checkboxes above: the same 1.5 stroke for the empty circle, and
+// the checked one filled to that circle's outer edge around a white dot.
+const ICON_RADIO =
+  '<svg xmlns="http://www.w3.org/2000/svg" class="radio-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">' +
+  '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5" />' +
+  "</svg>";
+const ICON_RADIO_CHECKED =
+  '<svg xmlns="http://www.w3.org/2000/svg" class="radio-icon checked" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">' +
+  '<circle cx="12" cy="12" r="9.75" fill="currentColor" />' +
+  '<circle cx="12" cy="12" r="3.75" fill="#fff" />' +
+  "</svg>";
 // mynaui:danger-triangle — https://icon-sets.iconify.design/mynaui/danger-triangle/ (MIT)
 const ICON_WARNING =
   '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">' +
@@ -138,7 +150,7 @@ const ICON_EJECT =
   'd="M8.386 6.738C9.92 4.858 10.688 3.917 12 3.917s2.08.94 3.614 2.821c.424.52.822 1.035 1.155 1.508c.292.415.593.885.89 1.372c1.14 1.877 1.711 2.815 1.08 3.657c-.633.842-1.955.918-4.6 1.071c-.748.043-1.482.07-2.139.07s-1.39-.027-2.139-.07c-2.645-.153-3.967-.23-4.6-1.071c-.631-.842-.06-1.78 1.08-3.657c.297-.487.599-.957.89-1.372c.332-.473.731-.988 1.155-1.508M5 19h14" />' +
   "</svg>";
 // Two opposing arrows, drawn to match ICON_EJECT beside it (18px, 2px
-// stroke, round ends) — the project header's Switch port button.
+// stroke, round ends) — the project header's Switch button.
 const ICON_SWITCH =
   '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">' +
   '<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" ' +

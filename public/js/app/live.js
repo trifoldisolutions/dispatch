@@ -27,7 +27,10 @@ function handle(message) {
       break;
     case "registry":
       legacy.reloadRegistry();
-      store.invalidate({ projects: true, tasks: true, people: true });
+      store.invalidate({ projects: true, tasks: true, pushes: true, people: true });
+      break;
+    case "pushes":
+      store.invalidate({ pushes: true });
       break;
     case "tasks":
     case "journal":

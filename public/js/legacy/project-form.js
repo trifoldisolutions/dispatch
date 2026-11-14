@@ -207,8 +207,8 @@ function buildCreateProjectForm() {
 
   // The port it gets, shown rather than picked: Dispatch writes it into the
   // project's .env itself (whatever port the project had), and Switch on its
-  // page moves or swaps it later. A project being edited keeps its own while
-  // it stays in its category; otherwise it's the category's first free port,
+  // page (the Switcher) moves it later. A project being edited keeps its
+  // own while it stays in its category; otherwise it's the category's first free port,
   // worked out afresh each time so one taken meanwhile (in another tab) isn't
   // used. "" for Unassigned, which has none.
   function formPort() {

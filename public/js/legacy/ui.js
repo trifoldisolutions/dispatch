@@ -40,10 +40,6 @@ function withAuthor(time, person) {
   return person ? `${time} by ${person.name}` : time;
 }
 
-function capitalize(text) {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
 // Every dropdown menu is built the same way regardless of which one it is
 // (category switcher, kebab menu, filter, assign, ...): absolutely
 // positioned below its toggle, anchored left. That default can crop against
@@ -147,6 +143,12 @@ function placeDropdown(anchorRect, menuRect, bounds) {
 // options draw it directly, real checkboxes get it through decorateCheckbox.
 function checkboxIcon(checked) {
   return checked ? ICON_CHECKBOX_CHECKED : ICON_CHECKBOX;
+}
+
+// The same for a menu where only one option can be picked (the Tasks
+// composer's priority).
+function radioIcon(checked) {
+  return checked ? ICON_RADIO_CHECKED : ICON_RADIO;
 }
 
 // Draws a real checkbox with checkboxIcon() instead of the browser's own box.

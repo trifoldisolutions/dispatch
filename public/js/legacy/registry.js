@@ -238,6 +238,70 @@ async function persist() {
   }
 }
 
+// Moves project `name` onto `port`, for a drop on the Switcher
+// (public/js/app/switchboard.js): a free port, or another project's, in which
+// case planPortDrop() slides that one, and those lined up behind it, along
+// to make room, or swaps the two when only the slide would touch a running
+// project. An unassigned project gets its first port this way. Each one that
+// moves takes its new port's category. Resolves { swappedWith, shifted } once
+// saved (the project it traded ports with, or how many slid along); false
+// when there was nothing to do, something is listening on `port`, a project
+// it would move has its Edit form open, the running-ports confirm was
+// declined, or the save failed and everything went back where it was.
+async function dropProjectOnPort(name, port) {
+  const moving = entries.find((e) => e.name === name) || null;
+  const index = moving ? -1 : unassigned.findIndex((e) => e.name === name);
+  const incoming = index === -1 ? null : unassigned[index];
+  if (!moving && !incoming) return false;
+  if (moving && Number(moving.port) === port) return false; // dropped back onto its own port
+
+  // Fresh, not the last poll's: whether a port is in use decides slide or swap.
+  const slide = planPortShifts(moving, port);
+  const live = await fetchPortStatus([port, moving && moving.port, ...slide.flatMap((m) => [m.entry.port, m.port])]);
+  // The board takes no drops on a port in use; its status can be a poll old.
+  if (live[String(port)]) {
+    setStatus("error", `Something is listening on ${port}, so nothing can be dropped there`);
+    return false;
+  }
+  const { swap, shifts } = planPortDrop(moving, port, live);
+  const moves = [...(moving ? [{ entry: moving, port }] : []), ...shifts];
+  // The Edit form keeps track of its project by port (by name while it's
+  // unassigned), so a project it has open doesn't move until it's saved or
+  // cancelled.
+  const edited = incoming && isEditingProject(incoming, "unassigned") ? incoming : moves.map((m) => m.entry).find((e) => isEditingProject(e, "entries"));
+  if (edited) {
+    setStatus("error", `Save or cancel ${edited.name}'s Edit form first`);
+    return false;
+  }
+  if (!(await confirmPortsFree([port, ...moves.flatMap((m) => [Number(m.entry.port), m.port])], live))) return false;
+
+  // Where everything was, so a failed save can put it all back.
+  const previous = moves.map(({ entry }) => ({ entry, port: entry.port, category: entry.category }));
+  let added = null;
+  if (incoming) {
+    unassigned.splice(index, 1);
+    added = { ...incoming, port: String(port), category: categoryForPort(port) };
+    entries.push(added);
+  }
+  for (const m of moves) {
+    m.entry.port = String(m.port);
+    m.entry.category = categoryForPort(m.port);
+  }
+  const ok = await persist();
+  if (!ok) {
+    for (const prev of previous) {
+      prev.entry.port = prev.port;
+      prev.entry.category = prev.category;
+    }
+    if (added) {
+      entries.splice(entries.indexOf(added), 1);
+      unassigned.splice(index, 0, incoming);
+    }
+  }
+  render();
+  return ok && { swappedWith: swap ? shifts[0].entry.name : null, shifted: swap ? 0 : shifts.length };
+}
+
 // Background liveness polling for the green dots and clickable titles on
 // card names — patches existing elements directly instead of a full
 // render() so it never disrupts in-progress typing, open dropdowns, or
@@ -262,6 +326,28 @@ function announceStatus() {
   document.dispatchEvent(
     new CustomEvent("dispatch:status", { detail: { ports: { ...portLiveStatus }, runs: { ...projectRunStatus } } })
   );
+}
+
+// Resolves once done() holds, checked at each status update (from /live or
+// the polls), or after RUN_SETTLE_MS whatever it says. A stop's request
+// returns once the kill is sent, before the process is gone and its port is
+// free (/live rechecks ports every 3s), so the Run buttons keep their
+// spinner on this rather than show Stop again before Run.
+const RUN_SETTLE_MS = 10000;
+function untilStatus(done) {
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      document.removeEventListener("dispatch:status", check);
+      resolve();
+    };
+    const check = () => done() && finish();
+    const timer = setTimeout(finish, RUN_SETTLE_MS);
+    document.addEventListener("dispatch:status", check);
+    refreshProjectRunStatus(); // both no-ops while /live is connected
+    refreshPortLiveStatus();
+    check();
+  });
 }
 
 function applyPortLiveStatus(status) {
@@ -313,9 +399,10 @@ function applyProjectRunStatus(status) {
 
 // Warns (with a cancelable confirm) if any of the given ports currently have
 // something actually listening on them, since the registry change alone
-// won't stop or move a running dev server off its old port.
-async function confirmPortsFree(ports) {
-  const status = await fetchPortStatus(ports);
+// won't stop or move a running dev server off its old port. `status` is a
+// port-status answer already fetched for these ports, if there is one.
+async function confirmPortsFree(ports, status = null) {
+  status = status || (await fetchPortStatus(ports));
   const live = [...new Set(ports.map(String))].filter((p) => status[p]);
   if (live.length === 0) return true;
   const noun = live.length > 1 ? "Ports" : "Port";

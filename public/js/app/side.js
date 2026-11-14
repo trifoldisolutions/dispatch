@@ -1,6 +1,7 @@
 // The side column under the Add project form, beside project pages from a
 // 2072px window (see sideShown in store.js), drawn into #side-root
-// (views/app/index.ejs): Your tasks, the open tasks on your other projects, and
+// (views/app/index.ejs): Your tasks, the open tasks on your other projects;
+// Ready to push, the commit messages your projects' next pushes will use; and
 // People, for finding someone to ask, or for a lead someone to bring onto
 // one of their projects. Its panels use the page's own panel styles
 // (.project-panel in public/css/dispatch.css), like the form above them.
@@ -10,10 +11,10 @@ import { useState, useEffect, useRef } from "preact/hooks";
 import { html } from "./html.js";
 import * as store from "./store.js";
 import * as api from "./api.js";
-import { Icon, Avatar, seenText, dueLabel, projectPath } from "./ui.js";
+import { Icon, Avatar, agoText, seenText, dueLabel, projectPath } from "./ui.js";
 
-const TASKS_SHOWN = 5; // then Show more, TASKS_MORE at a time
-const TASKS_MORE = 10;
+const ROWS_SHOWN = 5; // Your tasks and Ready to push: then Show more, ROWS_MORE at a time
+const ROWS_MORE = 10;
 const SEARCH_DELAY_MS = 200;
 const MENU_FILTER_FROM = 8; // Add to project gets a filter field from this many projects
 
@@ -49,9 +50,21 @@ export function SideLoading() {
   return html`<div class="flex items-center justify-center gap-2 px-4 py-6 text-[13px] text-dim"><${Icon} name="spinner" /> Loading…</div>`;
 }
 
-function ProjectChip({ name }) {
-  return html`<a href=${projectPath(name)} data-route
-    class="max-w-[160px] shrink-0 truncate rounded bg-line/60 px-1.5 py-px text-[11px] font-medium text-dim hover:text-fg">${name}</a>`;
+// With a section, it leads to that panel's own page. The folder emoji makes
+// the chip stand out from the gray text beside it.
+function ProjectChip({ name, section, title }) {
+  return html`<a href=${projectPath(name, section)} data-route title=${title}
+    class="max-w-[160px] shrink-0 truncate rounded bg-line/60 px-1.5 py-px text-[12px] font-medium text-dim hover:text-fg"><span aria-hidden="true">📁 </span>${name}</a>`;
+}
+
+// Under a list cut to `limit` rows: the next ROWS_MORE, or back to the first
+// ROWS_SHOWN once they're all out.
+function ShowMore({ left, limit, setLimit }) {
+  if (left <= 0 && limit <= ROWS_SHOWN) return null;
+  return html`<button type="button" onClick=${() => setLimit(left > 0 ? limit + ROWS_MORE : ROWS_SHOWN)}
+    class="w-full border-t border-line px-4 py-2.5 text-left text-[12.5px] text-accent hover:bg-line/20">
+    ${left > 0 ? `Show ${Math.min(left, ROWS_MORE)} more · ${left} left` : "Show fewer"}
+  </button>`;
 }
 
 // ---- Your tasks -------------------------------------------------------------
@@ -85,8 +98,8 @@ function TaskRow({ task, today }) {
 function YourTasks() {
   const { loaded, error, data } = store.myTasks.value;
   const current = store.view.value === "project" ? store.project.value : null;
-  const [limit, setLimit] = useState(TASKS_SHOWN);
-  useEffect(() => setLimit(TASKS_SHOWN), [current]);
+  const [limit, setLimit] = useState(ROWS_SHOWN);
+  useEffect(() => setLimit(ROWS_SHOWN), [current]);
 
   const tasks = data ? data.tasks.filter((task) => task.project !== current) : [];
   const overdue = data ? tasks.filter((task) => task.dueDate && task.dueDate < data.today).length : 0;
@@ -105,13 +118,98 @@ function YourTasks() {
     body = html`<ul class="divide-y divide-line/60 py-1">
         ${tasks.slice(0, limit).map((task) => html`<${TaskRow} key=${task.project + task.id} task=${task} today=${data.today} />`)}
       </ul>
-      ${(left > 0 || limit > TASKS_SHOWN) &&
-      html`<button type="button" onClick=${() => setLimit(left > 0 ? limit + TASKS_MORE : TASKS_SHOWN)}
-        class="w-full border-t border-line px-4 py-2.5 text-left text-[12.5px] text-accent hover:bg-line/20">
-        ${left > 0 ? `Show ${Math.min(left, TASKS_MORE)} more · ${left} left` : "Show fewer"}
-      </button>`}`;
+      <${ShowMore} left=${left} limit=${limit} setLimit=${setLimit} />`;
   }
   return html`<${SidePanel} title="Your tasks" meta=${meta} class="side-tasks">${body}<//>`;
+}
+
+// ---- Ready to push ----------------------------------------------------------
+
+// A commit message's body as its points, each joined back onto one line:
+// agents wrap them at 72 characters for git, narrower than this column has.
+// A line starting "- " (or "* ") or after a blank line starts the next point.
+// Trailers, like a closing Co-Authored-By, aren't changes, so they're left out.
+function messagePoints(body) {
+  const paragraphs = body.split(/\n\s*\n/);
+  const last = paragraphs[paragraphs.length - 1].split("\n");
+  if (last.every((line) => /^[A-Za-z][\w-]*: \S/.test(line.trim()))) paragraphs.pop();
+  const points = [];
+  let gap = true;
+  for (const line of paragraphs.join("\n\n").split("\n")) {
+    const text = line.trim();
+    if (!text) {
+      gap = true;
+      continue;
+    }
+    const bullet = /^[-*] /.test(text);
+    if (gap || bullet || points.length === 0) points.push(bullet ? text.slice(2) : text);
+    else points[points.length - 1] += " " + text;
+    gap = false;
+  }
+  return points;
+}
+
+// Its summary line, which opens the rest of the message under it, scrolling
+// past 320px so one long message can't push People out of the column; the
+// project's chip, leading to its History; and in a column of its own, its
+// Push. That's the History panel's button (.git-push-btn, the size of every
+// blue button) doing that panel's push: no confirm, and the same label and
+// state on both while either runs. Centered on the row, or level with the
+// summary while the message is open.
+function PushRow({ push }) {
+  const [open, setOpen] = useState(false);
+  const points = messagePoints(push.body);
+  const busy = store.pushing.value.has(push.project);
+  return html`<li class="flex items-start gap-3 px-4 py-2.5">
+    <div class="min-w-0 flex-1">
+      <button type="button" onClick=${() => setOpen(!open)} disabled=${points.length === 0} aria-expanded=${open}
+        title=${points.length === 0 ? push.summary : open ? "Hide the message" : "Show the whole message"}
+        class="group flex w-full items-start gap-1.5 text-left disabled:cursor-default">
+        <span class=${"mt-px shrink-0 text-dim transition-transform group-disabled:invisible " + (open ? "rotate-90" : "")}>
+          <${Icon} name="chevronRight" size=${14} />
+        </span>
+        <span class=${"min-w-0 flex-1 text-[13px] group-enabled:group-hover:underline " + (open ? "" : "truncate")}>${push.summary}</span>
+      </button>
+      ${open &&
+      html`<ul class="panel-scroll mt-1.5 max-h-[320px] space-y-1 pl-5 text-[12px] leading-[1.45] text-dim">
+        ${points.map((point, i) => html`<li key=${i} class="flex gap-2"><span aria-hidden="true">•</span><span class="min-w-0">${point}</span></li>`)}
+      </ul>`}
+      <div class="mt-1 flex items-center gap-2 pl-5 text-[12px] text-dim">
+        <${ProjectChip} name=${push.project} section="history" title=${`Open ${push.project}'s History`} />
+        <span class="min-w-0 truncate" title=${new Date(push.updatedAt).toLocaleString()}>
+          ${points.length > 0 && `${points.length} change${points.length === 1 ? "" : "s"} · `}Updated ${agoText(push.updatedAt)}
+        </span>
+      </div>
+    </div>
+    <button type="button" onClick=${() => store.pushProject(push.project)} disabled=${busy}
+      title=${`Commit ${push.project}'s changes with this message and push them`}
+      class=${"git-push-btn " + (open ? "" : "self-center")}>${busy ? "Pushing…" : "Push"}</button>
+  </li>`;
+}
+
+// The commit messages waiting on your projects, the one written last first,
+// each with its project's Push to commit and send it. They come and go as
+// agents write them and pushes use them (/live's "pushes"), the project
+// showing included, since its History panel is a scroll away.
+function ReadyToPush() {
+  const { loaded, error, data } = store.myPushes.value;
+  const [limit, setLimit] = useState(ROWS_SHOWN);
+  const pushes = data ? data.pushes : [];
+  const meta = pushes.length ? `${pushes.length} project${pushes.length === 1 ? "" : "s"}` : null;
+
+  let body;
+  if (!loaded) body = html`<${SideLoading} />`;
+  else if (error && !data) body = html`<${SideEmpty} icon="alert" title="Couldn't load commit messages" text=${error} error />`;
+  else if (pushes.length === 0) {
+    body = html`<${SideEmpty} icon="commit" title="Nothing to push"
+      text="A project's commit message shows here once its agents write one, until its Push uses it." />`;
+  } else {
+    body = html`<ul class="divide-y divide-line/60 py-1">
+        ${pushes.slice(0, limit).map((push) => html`<${PushRow} key=${push.project} push=${push} />`)}
+      </ul>
+      <${ShowMore} left=${pushes.length - limit} limit=${limit} setLimit=${setLimit} />`;
+  }
+  return html`<${SidePanel} title="Ready to push" meta=${meta} class="side-pushes">${body}<//>`;
 }
 
 // ---- People ---------------------------------------------------------------
@@ -438,5 +536,5 @@ export function PeoplePage() {
 
 export function Side() {
   if (!store.sideShown.value) return null;
-  return html`<${YourTasks} /><${People} />`;
+  return html`<${YourTasks} /><${ReadyToPush} /><${People} />`;
 }

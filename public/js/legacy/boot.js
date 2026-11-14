@@ -8,7 +8,8 @@ document.addEventListener("click", (e) => {
     !journalCalendarOpen &&
     !taskCalendarOpen &&
     !taskDueCalendarOpen &&
-    !portSwitchOpen &&
+    !taskPriorityMenuOpen &&
+    !taskPriorityFilterOpen &&
     openStaffMenu === null
   )
     return;
@@ -21,7 +22,8 @@ document.addEventListener("click", (e) => {
   closeJournalCalendar();
   closeTaskCalendar();
   taskDueCalendarOpen = false;
-  portSwitchOpen = false;
+  taskPriorityMenuOpen = false;
+  taskPriorityFilterOpen = false;
   openStaffMenu = null;
   render();
 });
@@ -96,7 +98,8 @@ document.addEventListener("keydown", (e) => {
       journalCalendarOpen ||
       taskCalendarOpen ||
       taskDueCalendarOpen ||
-      portSwitchOpen ||
+      taskPriorityMenuOpen ||
+      taskPriorityFilterOpen ||
       openStaffMenu !== null)
   ) {
     openAssignDropdown = null;
@@ -105,7 +108,8 @@ document.addEventListener("keydown", (e) => {
     closeJournalCalendar();
     closeTaskCalendar();
     taskDueCalendarOpen = false;
-    portSwitchOpen = false;
+    taskPriorityMenuOpen = false;
+    taskPriorityFilterOpen = false;
     openStaffMenu = null;
     render();
     return;
@@ -172,7 +176,18 @@ window.DispatchLegacy = {
   openNewFoldersModal,
   newFolders: () => newFolders.slice(),
   registry: () => ({ entries: entries.slice(), unassigned: unassigned.slice(), loaded: registryLoaded }),
+  // The Switcher: each category's ports, what a drop would do (whether
+  // it swaps, and who else moves, as { name, port }, by the last poll's
+  // ports in use), and the drop itself.
+  portRange: categoryPortRange,
+  portDrop(name, port) {
+    const moving = entries.find((e) => e.name === name) || null;
+    const { swap, shifts } = planPortDrop(moving, port, portLiveStatus);
+    return { swap, shifts: shifts.map(({ entry, port: to }) => ({ name: entry.name, port: to })) };
+  },
+  dropProjectOnPort,
   liveStatus: () => ({ ports: { ...portLiveStatus }, runs: { ...projectRunStatus } }),
+  untilStatus,
   setStatus,
   confirm: customConfirm,
   prompt: customPrompt, // a confirm that takes typing a value, for deleting
@@ -186,6 +201,13 @@ window.DispatchLegacy = {
   // refetches next time.
   forgetTasks(name) {
     delete taskCache[name];
+  },
+  // The side column's Ready to push: the History panel's own push (see
+  // runGitPush), the page redrawn after it like that panel's.
+  async pushProject(name) {
+    const result = await runGitPush(name);
+    if (result) render();
+    return result;
   },
   // What /live (public/js/app/live.js) delivers.
   applyPortLiveStatus,

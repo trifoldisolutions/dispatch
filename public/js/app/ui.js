@@ -9,6 +9,9 @@ const paths = {
   play: html`<path d="M8 6.5v11a1 1 0 0 0 1.5.86l9-5.5a1 1 0 0 0 0-1.72l-9-5.5A1 1 0 0 0 8 6.5z" fill="currentColor" stroke="none" />`,
   stop: html`<rect x="6.5" y="6.5" width="11" height="11" rx="2.5" fill="currentColor" stroke="none" />`,
   arrow: html`<path d="M5 12h14M13 6l6 6-6 6" />`,
+  arrowUp: html`<path d="M12 19V5M5 12l7-7 7 7" />`,
+  arrowDown: html`<path d="M12 5v14M5 12l7 7 7-7" />`,
+  swap: html`<path d="M4 7h16M16 3l4 4-4 4M20 17H4M8 13l-4 4 4 4" />`,
   // A panel title's link (.project-panel-title-link), at the 1.5 stroke of the project page's own (ICON_CHEVRON_RIGHT).
   chevronRight: html`<path stroke-width="1.5" d="m9 18l6-6l-6-6" />`,
   external: html`<path d="M14 5h5v5M19 5l-8 8M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4" />`,
@@ -52,19 +55,24 @@ export function LiveDot({ on, title }) {
 }
 
 export const CATEGORY_LABELS = { fire: "🔥 Fire", breeze: "🍃 Breeze", cold: "❄️ Cold" };
-const CATEGORY_CLASSES = {
+export const CATEGORY_CLASSES = {
   fire: "bg-fire-bg border-fire",
   breeze: "bg-breeze-bg border-breeze",
   cold: "bg-cold-bg border-cold",
 };
 
-export function CategoryBadge({ project }) {
+// With `onClick`, a button (the project list's opens the Switcher),
+// lifted over a card's link. Dispatch's own badge never is: it has no
+// category.
+export function CategoryBadge({ project, onClick, title }) {
   if (project.self) {
     return html`<span class="rounded border border-line px-1.5 py-px text-[11px] text-dim">🎛️ Dashboard</span>`;
   }
   const cls = CATEGORY_CLASSES[project.category] || "border-line";
   const label = CATEGORY_LABELS[project.category] || "📥 Unassigned";
-  return html`<span class="whitespace-nowrap rounded border px-1.5 py-px text-[11px] ${cls}">${label}</span>`;
+  if (!onClick) return html`<span class="whitespace-nowrap rounded border px-1.5 py-px text-[11px] ${cls}">${label}</span>`;
+  return html`<button type="button" onClick=${onClick} title=${title}
+    class="relative z-10 whitespace-nowrap rounded border px-1.5 py-px text-[11px] outline-none hover:shadow-[0_0_0_2px] hover:shadow-accent/35 focus-visible:shadow-[0_0_0_2px] focus-visible:shadow-accent ${cls}">${label}</button>`;
 }
 
 export const ROLE_LABELS = { lead: "Lead", dev: "Developer", client: "Client", admin: "Admin" };
@@ -82,16 +90,20 @@ export function Avatar({ person, online }) {
   </span>`;
 }
 
-// "Seen 5 min ago", "Seen 3 h ago", "Seen 2 days ago", else the date.
-export function seenText(lastSeenAt) {
-  if (!lastSeenAt) return "Not seen yet";
-  const minutes = Math.max(1, Math.round((Date.now() - new Date(lastSeenAt)) / 60000));
-  if (minutes < 60) return `Seen ${minutes} min ago`;
+// "5 min ago", "3 h ago", "2 days ago", else the date.
+export function agoText(date) {
+  const minutes = Math.max(1, Math.round((Date.now() - new Date(date)) / 60000));
+  if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `Seen ${hours} h ago`;
+  if (hours < 24) return `${hours} h ago`;
   const days = Math.round(hours / 24);
-  if (days < 7) return `Seen ${days} day${days === 1 ? "" : "s"} ago`;
-  return `Seen ${new Date(lastSeenAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
+  return new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+// "Seen 5 min ago", and so on.
+export function seenText(lastSeenAt) {
+  return lastSeenAt ? `Seen ${agoText(lastSeenAt)}` : "Not seen yet";
 }
 
 export function Panel({ title, icon, meta, children, class: cls = "" }) {

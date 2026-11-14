@@ -19,6 +19,17 @@
   --breeze-border: #fde68a;
   --cold-bg: #eff6ff;
   --cold-border: #bfdbfe;
+  /* Task priority badges, louder as the level rises: a muted yellow for
+     low, then amber and rust tints, then urgent in solid red (the same in
+     both themes, so the dark theme leaves its pair alone). */
+  --prio-low-fg: #854d0e;
+  --prio-low-bg: #fefce8;
+  --prio-medium-fg: #92400e;
+  --prio-medium-bg: #fde68a;
+  --prio-high-fg: #7c2d12;
+  --prio-high-bg: #fdba74;
+  --prio-urgent-fg: #ffffff;
+  --prio-urgent-bg: #dc2626;
   --toolbar-height: 60px; /* the project page fills the window below it */
 }
 @media (prefers-color-scheme: dark) {
@@ -35,6 +46,12 @@
     --breeze-border: #5c4d1e;
     --cold-bg: #10202a;
     --cold-border: #1e4258;
+    --prio-low-fg: #bfb07a;
+    --prio-low-bg: #25231b;
+    --prio-medium-fg: #e3a63b;
+    --prio-medium-bg: #33250c;
+    --prio-high-fg: #f0884a;
+    --prio-high-bg: #3d1f0f;
   }
 }
 * { box-sizing: border-box; }
@@ -89,9 +106,8 @@ body {
 }
 .toast-close:hover { opacity: 1; }
 .toast-close svg { display: block; }
-/* The row over a project's header box: 60px with its 38px buttons, level
-   with the project list's totals beside it. Taller only when it has to
-   wrap. */
+/* The row over a project's header box: 60px with its 38px buttons. Taller
+   only when it has to wrap. */
 .toolbar {
   display: flex;
   align-items: center;
@@ -411,6 +427,9 @@ body {
    when unchecked, filled with the accent color when checked. */
 .checkbox-icon { display: block; flex: none; color: var(--text-dim); }
 .checkbox-icon.checked { color: var(--accent); }
+/* The same for radios (see radioIcon), where one option of a menu is picked. */
+.radio-icon { display: block; flex: none; color: var(--text-dim); }
+.radio-icon.checked { color: var(--accent); }
 /* A real checkbox wearing that icon (see decorateCheckbox): the input sits
    invisibly on top, so it still takes the clicks and keyboard focus. */
 .icon-checkbox { position: relative; flex: none; display: inline-flex; cursor: pointer; }
@@ -436,9 +455,12 @@ body {
 }
 .tags-toggle { min-width: 90px; }
 /* Composer-only: the toggle fills the gap between the date picker and the
-   Add button, matching row 1's text input spanning the full row. */
-.tags-dropdown-grow { flex: 1; min-width: 0; }
-.tags-dropdown-grow .tags-toggle { width: 100%; }
+   Add button, matching row 1's text input spanning the full row. Like the
+   due date and priority beside it, it's dim until a tag is picked. */
+.tags-dropdown-grow { flex: 1 1 96px; min-width: 0; }
+.tags-dropdown-grow .tags-toggle { width: 100%; min-width: 0; color: var(--text-dim); }
+.tags-dropdown-grow .tags-toggle.active { color: var(--text); }
+.tags-dropdown-grow .tags-toggle > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dropdown-empty { padding: 8px 12px; font-size: 12px; color: var(--text-dim); font-style: italic; }
 .dropdown-new-tag { display: flex; gap: 6px; padding: 6px 8px; }
 .dropdown-new-tag-input {
@@ -589,8 +611,8 @@ body {
 }
 .json-toggle:hover { color: var(--accent); }
 .json-toggle svg { display: block; transition: transform 0.15s ease; }
-/* Tree-view convention (unlike the section collapse chevrons above, which
-   rotate 180°): pointing down = expanded, rotated to point right = collapsed. */
+/* Tree-view convention: pointing down = expanded, rotated to point right =
+   collapsed. */
 .json-toggle.collapsed svg { transform: rotate(-90deg); }
 .json-toggle-spacer { flex: none; display: inline-block; width: 18px; }
 
@@ -808,6 +830,10 @@ body {
 .project-badge.cat-fire { background: var(--fire-bg); border-color: var(--fire-border); color: var(--text); }
 .project-badge.cat-breeze { background: var(--breeze-bg); border-color: var(--breeze-border); color: var(--text); }
 .project-badge.cat-cold { background: var(--cold-bg); border-color: var(--cold-border); color: var(--text); }
+/* The category badge opens the Switcher (see buildCategoryBadge). */
+.project-badge-btn { font-family: inherit; line-height: inherit; cursor: pointer; }
+.project-badge-btn:hover { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+.project-badge-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent); }
 /* Four lines at most, so the header keeps its height whatever the column's
    width; when that cuts it short, the rest is in the tooltip. */
 .project-description {
@@ -874,35 +900,6 @@ body {
 .project-port-number { flex: none; font-size: 18px; font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 /* Switch, Eject and Sync, after the port (see buildProjectBarTools). */
 .project-bar-tools { flex: none; display: flex; gap: 4px; }
-.project-bar-tools .port-switch { display: flex; }
-.port-switch.open .project-switch-btn { color: var(--accent); border-color: var(--accent); }
-/* Switch's menu: a heading per category over its ports, each with who has
-   it (or Free) and "Swap" for a taken one. Scrolls once the unlimited
-   category's ports run long. */
-.port-switch-menu { width: 300px; max-width: none; max-height: 380px; overflow-y: auto; }
-/* A category's range sits right after its name: the right-hand column is
-   only ever an action (Swap, Insert), so nothing else there looks like one. */
-.port-switch-heading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px 4px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-dim);
-}
-.port-switch-heading:not(:first-child) { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
-.port-switch-cat { text-transform: capitalize; }
-.port-switch-range { font-weight: 400; font-variant-numeric: tabular-nums; opacity: 0.75; }
-.port-switch-option { justify-content: flex-start; padding: 6px 10px; font-size: 14px; text-transform: none; }
-.port-switch-option.active:disabled { color: var(--accent); cursor: default; }
-.port-switch-port { flex: none; width: 4ch; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.port-switch-option.active .port-switch-port { color: inherit; }
-.port-switch-holder { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.port-switch-holder.free { color: var(--ok); }
-.port-switch-holder.end { color: var(--text-dim); font-style: italic; } /* a placeholder, like an empty field's */
-.port-switch-hint { flex: none; color: var(--text-dim); }
-.port-switch-option:hover:not(:disabled) .port-switch-hint { color: var(--accent); }
 /* The right-hand part: the staff, its cards down at the header's foot.
    Three header cards wide (.staff-row .staff-card's 96px and the row's 8px gaps), more
    scrolling sideways (contain: a long row of people can't widen the
@@ -1440,36 +1437,47 @@ body {
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
-.journal-input-wrap { position: relative; }
-/* A fixed height shared with the Tasks composer's box
-   (.task-composer-input), so the two composers match side by side —
-   this one's shorter footer strip leaves room for an extra line of text. */
-.journal-input {
-  width: 100%;
+/* The box is the wrap, not the textarea: a borderless textarea fills its
+   top and the counter/button sit in a strip below it, inside the same
+   border, so they read as built into the box, like a chat input. The strip
+   isn't laid over the textarea's bottom padding, since a textarea shows
+   its scrolled text through its padding: a long note ran behind the
+   controls. A fixed height shared with the Tasks composer's box
+   (.task-composer-input-wrap), so the two composers match side by side —
+   this one's shorter strip leaves room for an extra line of text. */
+.journal-input-wrap {
+  display: flex;
+  flex-direction: column;
   height: 132px;
-  resize: none;
-  font: inherit;
-  font-size: 13px;
-  padding: 8px 10px 44px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
+  box-sizing: border-box;
+}
+.journal-input-wrap:has(.journal-input:focus) { border-color: var(--accent); }
+.journal-input {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px 4px;
+  border: none;
+  background: none;
   color: var(--text);
   box-sizing: border-box;
 }
-.journal-input:focus { outline: none; border-color: var(--accent); }
-/* Overlaid on the textarea's own bottom padding, not a sibling below it —
-   the counter/button read as built into the box, like a chat input. */
+.journal-input:focus { outline: none; }
+/* Clicks in the strip's empty space focus the textarea (see
+   buildJournalComposer), as if the strip were part of it. */
 .journal-input-footer {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 8px;
+  flex: none;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 8px;
-  pointer-events: none; /* clicks in the empty strip fall through to the textarea underneath */
+  padding: 0 8px 8px;
 }
 .journal-counter { font-size: 11px; color: var(--text-dim); }
 .journal-add-btn {
@@ -1670,8 +1678,8 @@ body {
   background: color-mix(in srgb, var(--accent) 24%, transparent);
   color: inherit;
 }
-/* The tags and date dropdowns, reshaped from bordered buttons into
-   segments of the field: full height, split off by a divider. */
+/* The tags, priority and date dropdowns, reshaped from bordered buttons
+   into segments of the field: full height, split off by a divider. */
 .panel-filter .dropdown { flex: none; display: flex; border-left: 1px solid var(--border); }
 .panel-filter .dropdown-toggle {
   min-width: 0;
@@ -1728,8 +1736,9 @@ body {
   border-top: 1px solid var(--border);
 }
 .task-row:first-child { border-top: none; }
-/* Heads the tasks that mention a searched ID, below the task that has it:
-   boxed, on the page's background, so the split between them stands out. */
+/* Heads the tasks that mention a searched ID, below the task that has it,
+   and the done and archived sections below the open tasks: boxed, on the
+   page's background, so the split between them stands out. */
 .task-list-label {
   margin: 6px 0;
   padding: 6px 10px;
@@ -1742,6 +1751,22 @@ body {
   text-align: center;
 }
 .task-list-label + .task-row { border-top: none; }
+.task-list-label:first-child { margin-top: 0; }
+/* The done and archived labels fold their sections: the whole label is the
+   button, with a dropdown's caret before its text, pointing down while the
+   section is shut and flipped up once it's open, as a dropdown's does. */
+.task-list-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+.task-list-toggle:hover { color: var(--text); border-color: var(--accent); }
+.task-list-toggle:not(.collapsed) .dropdown-caret { transform: rotate(180deg); }
 /* Whichever task's data is currently loaded into the composer below for
    editing — a plain background tint reads as "in progress" without
    the layout disruption a border/padding change would cause. Applied
@@ -1769,6 +1794,25 @@ body {
    toward --text so the tint stays legible on both themes' panels). */
 .task-tag { flex: none; color: color-mix(in srgb, var(--accent) 75%, var(--text)); }
 .task-copy + .task-tag { margin-left: 4px; }
+/* A task's priority, a badge after its ID badge holding just the level,
+   colored by level from its --prio-* pair so it gets louder as the level
+   rises. Its border is its text color faded into its fill, except
+   urgent's, which is solid. */
+.task-priority {
+  flex: none;
+  font-weight: 600;
+  color: var(--prio-fg);
+  background: var(--prio-bg);
+  border: 1px solid color-mix(in srgb, var(--prio-fg) 35%, var(--prio-bg));
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.task-copy + .task-priority { margin-left: 4px; }
+.task-priority-low { --prio-fg: var(--prio-low-fg); --prio-bg: var(--prio-low-bg); }
+.task-priority-medium { --prio-fg: var(--prio-medium-fg); --prio-bg: var(--prio-medium-bg); }
+.task-priority-high { --prio-fg: var(--prio-high-fg); --prio-bg: var(--prio-high-bg); }
+.task-priority-urgent { --prio-fg: var(--prio-urgent-fg); --prio-bg: var(--prio-urgent-bg); }
+.task-priority.task-priority-urgent { border-color: var(--prio-bg); }
 /* The ID badge is the copy button, with its copy icon inside it after
    the code. Its code is in full text color, a step up from the dim
    dates, as what a task is referred to by. */
@@ -1842,39 +1886,52 @@ body {
 .task-input:focus { outline: none; border-color: var(--accent); }
 /* flex: none — .task-input's flex: 1 is for sitting in a row; in the
    composer's column it would otherwise mean growing vertically. */
-.task-title-input { flex: none; width: 100%; font-weight: 600; }
-/* Matches the Journal panel's composer box exactly: a textarea with its
-   controls tucked into its own bottom padding. Journal only ever fits a
-   counter and one button down there; this one also has the due date
-   picker and the tags dropdown, so the reserved strip is taller and the
-   footer holds more than just those two. */
-.task-composer-input-wrap { position: relative; }
-.task-composer-input { width: 100%; height: 132px; resize: none; padding: 8px 10px 64px; } /* height: see .journal-input */
-/* Overlaid on the textarea's own bottom padding, not below it — same
-   technique as .journal-input-footer. pointer-events: none on the strip so
-   clicks in its empty space fall through to the textarea underneath, with
-   each actual control opting back in via pointer-events: auto. Stacked in
-   a column — the counter on its own line above the controls row — rather
-   than sharing one row with them, since it isn't paired with any single
-   control the way Journal's counter-and-button pair is. */
+.task-title-input { flex: none; width: 100%; font-weight: 600; }/* Matches the Journal panel's composer box exactly (see
+   .journal-input-wrap): the wrap is the box, a borderless textarea fills
+   its top and the controls sit in a strip below it, never over the text.
+   Journal only ever fits a counter and one button down there; this one
+   also has the due date picker and the tags dropdown, so the strip is
+   taller and holds more than just those two. */
+.task-composer-input-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 132px; /* see .journal-input-wrap */
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  box-sizing: border-box;
+}
+.task-composer-input-wrap:has(.task-composer-input:focus) { border-color: var(--accent); }
+.task-composer-input {
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  padding: 8px 10px 4px;
+  border: none;
+  border-radius: 0;
+  background: none;
+}
+/* Same strip as .journal-input-footer, and clicks in its empty space focus
+   the textarea the same way (see buildTaskComposer). Stacked in a column —
+   the counter on its own line above the controls row — rather than sharing
+   one row with them, since it isn't paired with any single control the way
+   Journal's counter-and-button pair is. */
 .task-composer-footer {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 8px;
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  pointer-events: none;
+  padding: 0 8px 8px;
 }
 .task-composer-footer-row { display: flex; align-items: center; gap: 8px; }
-.task-composer-footer-row > * { pointer-events: auto; }
 .task-composer-counter { flex: none; font-size: 11px; color: var(--text-dim); }
-/* The composer's due date: a dropdown toggle as wide as the date input it
-   replaced, its label trailing off if a far-off year makes it long. */
-.task-due-dropdown { flex: none; }
+/* The composer's due date, priority and tags share the row with the Add
+   button: 150px, 110px and the rest when there's room, and each gives up
+   width (its label trailing off) when a narrow panel has too little. */
+.task-due-dropdown { flex: 0 1 150px; min-width: 0; }
 .task-due-toggle {
-  width: 150px;
+  width: 100%;
+  min-width: 0;
   justify-content: flex-start;
   gap: 6px;
   padding: 9px 10px;
@@ -1885,6 +1942,24 @@ body {
 .task-due-toggle svg { flex: none; }
 .task-due-toggle .dropdown-caret { margin-left: auto; }
 .task-due-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The composer's priority: dim "Priority" until a level is picked, then
+   that level in the task row's colors (above). */
+.task-priority-dropdown { flex: 0 1 110px; min-width: 0; }
+.task-priority-toggle { width: 100%; min-width: 0; gap: 6px; padding: 9px 10px; color: var(--text-dim); }
+.task-priority-toggle.active { color: var(--text); }
+.task-priority-toggle.task-priority-high,
+.task-priority-toggle.task-priority-urgent { font-weight: 600; }
+.task-priority-toggle.task-priority-urgent { color: var(--danger); }
+.task-priority-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Too narrow for all three labels and the button (a two-column project
+   page on a laptop): the due date drops to its calendar icon, with the day
+   in its tooltip, so Priority and Tags keep theirs. */
+.task-composer { container: task-composer / inline-size; }
+@container task-composer (max-width: 490px) {
+  .task-due-dropdown { flex: none; }
+  .task-due-label { display: none; }
+  .task-composer-footer-row .dropdown-toggle { padding-inline: 10px; gap: 6px; }
+}
 .task-add-btn,
 .project-form-submit {
   flex: none;
@@ -1928,7 +2003,8 @@ body {
   color: var(--text);
 }
 .git-push-message.empty { font-size: 12px; font-style: italic; color: var(--text-dim); }
-/* Same size as the Tasks/Journal composers' Add buttons. */
+/* Same size as the Tasks/Journal composers' Add buttons. Ready to push's
+   rows in the side column (public/js/app/side.js) use it too. */
 .git-push-btn {
   flex: none;
   height: 34px;
@@ -2131,6 +2207,23 @@ body {
 }
 .confirm-btn.danger { border-color: var(--danger); background: var(--danger); }
 .confirm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+/* The urgent-limit dialog (chooseUrgentTaskToSettle in tasks.js): each
+   urgent task's ID and title, with its two ways to settle it under them. */
+.urgent-limit-list { display: flex; flex-direction: column; gap: 8px; }
+.urgent-limit-task {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.urgent-limit-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.urgent-limit-head .task-code { flex: none; }
+.urgent-limit-title { font-size: 13px; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
+.urgent-limit-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.urgent-limit-actions .cancel-btn { padding: 5px 10px; font-size: 12px; }
 
 /* ---- Shell: the columns beside the left menu (the project list, the page
    and the form column), the toolbar (project pages only) and the Add/Edit
@@ -2157,15 +2250,15 @@ body {
   position: relative;
   z-index: 1;
 }
-/* Its top level with the project line's buttons and the project list's
-   totals, 11px down the toolbar's row (38px tall, centered in 60), and
-   kept there while the page scrolls; its panels end 16px above the window's
-   foot, like the page's and the list's. The form and Your tasks take their
-   own height and People (public/js/app/side.js) the rest, its list of
-   people scrolling inside it. Only when that leaves no room for one person
-   (a short window, or Your tasks shown in full) does the column itself
-   scroll, by wheel, touch or keyboard, its bar hidden like the panels'
-   lists', so it doesn't take their width. */
+/* Its top level with the project line's buttons, 11px down the toolbar's
+   row (38px tall, centered in 60), and kept there while the page scrolls;
+   its panels end 16px above the window's foot, like the page's and the
+   list's. The form, Your tasks and Ready to push take their own height and
+   People (public/js/app/side.js) the rest, its list of people scrolling
+   inside it. Only when that leaves no room for one person (a short window,
+   or a list shown in full) does the column itself scroll, by wheel, touch
+   or keyboard, its bar hidden like the panels' lists', so it doesn't take
+   their width. */
 .create-side {
   flex: 0 0 400px;
   position: sticky;
@@ -2181,7 +2274,8 @@ body {
 .create-side::-webkit-scrollbar { display: none; }
 .create-side[hidden] { display: none; }
 #create-project-side,
-.side-tasks { flex: none; }
+.side-tasks,
+.side-pushes { flex: none; }
 #side-root { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .side-people { flex: 1 1 auto; min-height: 204px; } /* its header, the search and one whole person */
 /* Beside the project list (from 1280px, on project pages and /projects),

@@ -1,5 +1,6 @@
-// State shared by the project list, the side column (Your tasks, People) and
-// the palette, as signals: components that read one redraw when it changes.
+// State shared by the project list, the side column (Your tasks, Ready to
+// push, People) and the palette, as signals: components that read one
+// redraw when it changes.
 //
 // The older scripts (public/js/legacy) still own the registry and the
 // listening/running state; they announce changes with the "dispatch:render"
@@ -18,12 +19,15 @@ export const view = signal("projects"); // "projects" (/ or /projects, on the wa
 export const project = signal(null); // whose page is showing, on "project"
 export const status = signal({ ports: {}, runs: {} }); // port -> listening, name -> { status, error, twError }
 export const newFolders = signal([]);
+export const registry = signal({ entries: [], unassigned: [], loaded: false }); // every project by port, as the older scripts hold it (DispatchLegacy.registry)
 export const myProjects = signal({ loaded: false, error: null, list: [] });
 export const myTasks = signal({ loaded: false, error: null, data: null }); // data: { today, tasks } (GET /api/me/tasks)
+export const myPushes = signal({ loaded: false, error: null, data: null }); // data: { pushes } (GET /api/me/pushes)
 export const people = signal({ loaded: false, error: null, data: null }); // data: { people, leading, seesClients } (GET /api/me/people)
 export const online = signal(null); // /live's presence: a Set of user ids, null until it first arrives
 export const accountsChanged = signal(0); // counts /live's "people": the Users page reloads on it
 export const busy = signal({}); // name -> true while a start/stop it asked for is in flight
+export const pushing = signal(new Set()); // projects with a push running, from either Push button
 
 // The side column beside project pages and /projects, under the Add project
 // form, from the same window width as that form's (SIDE_FORM_QUERY in
@@ -39,6 +43,7 @@ SIDE_QUERY.addEventListener("change", (e) => {
 const STALE_MS = 30 * 1000; // how long a page's data counts as fresh when you come back to it
 let projectsLoadedAt = 0;
 let tasksLoadedAt = 0;
+let pushesLoadedAt = 0;
 let peopleLoadedAt = 0;
 
 export async function loadProjects() {
@@ -60,6 +65,15 @@ export async function loadTasks() {
   }
 }
 
+export async function loadPushes() {
+  pushesLoadedAt = Date.now();
+  try {
+    myPushes.value = { loaded: true, error: null, data: await api.getMyPushes() };
+  } catch (err) {
+    myPushes.value = { ...myPushes.value, loaded: true, error: err.message };
+  }
+}
+
 export async function loadPeople() {
   peopleLoadedAt = Date.now();
   try {
@@ -71,21 +85,24 @@ export async function loadPeople() {
 
 // Fetches what's showing needs, unless it's still fresh. Every page needs the
 // project list: the list beside project pages, and the left menu's Projects,
-// which links to the first of them. The side column's tasks only load while
-// it shows, and people while it or the People page does (the page fetches
-// its own list, everyone, again whenever these reload).
+// which links to the first of them. The side column's tasks and commit
+// messages only load while it shows, and people while it or the People page
+// does (the page fetches its own list, everyone, again whenever these
+// reload).
 function loadStale() {
   const now = Date.now();
   if (now - projectsLoadedAt > STALE_MS) loadProjects();
   if (sideShown.value && now - tasksLoadedAt > STALE_MS) loadTasks();
+  if (sideShown.value && now - pushesLoadedAt > STALE_MS) loadPushes();
   if ((sideShown.value || view.value === "people") && now - peopleLoadedAt > STALE_MS) loadPeople();
 }
 
 // Something changed on the server (/live says what): refetch what depends on
 // it now if it's showing, or next time it is.
-export function invalidate({ projects = false, tasks = false, people: peopleToo = false } = {}) {
+export function invalidate({ projects = false, tasks = false, pushes = false, people: peopleToo = false } = {}) {
   if (projects) projectsLoadedAt = 0;
   if (tasks) tasksLoadedAt = 0;
+  if (pushes) pushesLoadedAt = 0;
   if (peopleToo) peopleLoadedAt = 0;
   loadStale();
 }
@@ -97,11 +114,17 @@ document.addEventListener("dispatch:render", (e) => {
     view.value = next;
     loadStale();
   }
-  if (legacy()) newFolders.value = legacy().newFolders();
+  if (!legacy()) return;
+  newFolders.value = legacy().newFolders();
+  registry.value = legacy().registry();
 });
 
 document.addEventListener("dispatch:status", (e) => {
   status.value = e.detail;
+});
+
+document.addEventListener("dispatch:push", (e) => {
+  pushing.value = new Set(e.detail.pushing);
 });
 
 // /live's presence: People's dots follow it.
@@ -162,6 +185,12 @@ export async function toggleRun(project) {
   try {
     if (running) await api.stopProject(project.name);
     else await api.startProject(project.name);
+    // The spinner stays until the status shows it (see untilStatus), so the
+    // button doesn't show its old state again on the way.
+    await legacy().untilStatus(() => {
+      const state = runState(project, legacy().liveStatus());
+      return running ? state !== "running" : state !== "stopped";
+    });
   } catch (err) {
     toast("error", `${running ? "Stop" : "Start"} ${project.name}: ${err.message}`);
   } finally {
@@ -189,6 +218,20 @@ export async function completeTask(task) {
     toast("error", err.message);
   }
   invalidate({ projects: true, tasks: true });
+}
+
+// Ready to push's Push: the History panel's own (runGitPush in
+// public/js/legacy/history.js), so either button shows the other's running.
+// Without anything to commit, the message isn't used and stays listed.
+export async function pushProject(name) {
+  try {
+    const result = await legacy().pushProject(name);
+    if (!result) return; // already pushing
+    toast("saved", result.committed ? `Pushed ${name}` : `Nothing to commit in ${name}: its message waits for the next push`);
+  } catch (err) {
+    toast("error", `Push ${name}: ${err.message}`);
+  }
+  invalidate({ pushes: true });
 }
 
 // People's Add to project, once confirmed: true when they were added.
@@ -224,6 +267,7 @@ export function navigate(path, options) {
 export function init() {
   status.value = legacy().liveStatus();
   newFolders.value = legacy().newFolders();
+  registry.value = legacy().registry();
   view.value = legacy().view();
   project.value = legacy().project();
   loadStale();

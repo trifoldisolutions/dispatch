@@ -129,17 +129,19 @@ async function fetchTasks(name) {
   const res = await fetch(`/api/project-folders/${encodeURIComponent(name)}/tasks`);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || "Failed to load tasks");
-  return body; // { tasks: [{ id, title, description, done, doneAt, archived, archivedAt, dueDate, tags, createdAt, updatedAt }], tags: string[] }
+  return body; // { tasks: [{ id, title, description, done, doneAt, archived, archivedAt, dueDate, priority, tags, createdAt, updatedAt }], tags: string[] }
 }
 
-async function postTask(name, title, description, dueDate, tags) {
+// This and patchTask throw with `urgentTasks` ([{ id, title }]) when the
+// server refuses the save for the urgent limit (see saveWithinUrgentLimit).
+async function postTask(name, title, description, dueDate, priority, tags) {
   const res = await fetch(`/api/project-folders/${encodeURIComponent(name)}/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, description, dueDate, tags }),
+    body: JSON.stringify({ title, description, dueDate, priority, tags }),
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || "Failed to add task");
+  if (!res.ok) throw Object.assign(new Error(body.error || "Failed to add task"), { urgentTasks: body.urgentTasks });
   return body; // { tasks: [...], tags: [...] }
 }
 
@@ -150,7 +152,7 @@ async function patchTask(name, id, changes) {
     body: JSON.stringify(changes),
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || "Failed to update task");
+  if (!res.ok) throw Object.assign(new Error(body.error || "Failed to update task"), { urgentTasks: body.urgentTasks });
   return body; // { tasks: [...] }
 }
 

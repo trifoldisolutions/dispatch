@@ -10,6 +10,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { html } from "./html.js";
 import * as store from "./store.js";
 import { Icon, LiveDot, CategoryBadge, RunButton, Dropdown, Empty, Loading, ROLE_LABELS, CATEGORY_LABELS, dayLabel, projectPath } from "./ui.js";
+import { openSwitchBoard } from "./switchboard.js";
 
 // What the list shows and its sort are remembered in this browser, so a
 // refresh or the next visit opens it the same way. The search text isn't: a
@@ -251,10 +252,11 @@ function StaffStack({ staff }) {
   </div>`;
 }
 
-// A project at a glance: run state, category and port (while it runs, a
-// blue pill linking to the site), description, task figures and last journal entry, its
-// staff, VS Code and Run/Stop. The whole card opens its page; the page's own
-// project is outlined.
+// A project at a glance: run state, category (its badge opens the
+// Switcher) and port (while it runs, a blue pill linking to the
+// site), description, task figures and last journal entry, its staff, VS Code
+// and Run/Stop. The whole card opens its page; the page's own project is
+// outlined.
 function ProjectCard({ project, state, busy, current, day }) {
   const running = state === "running";
   const linkable = project.hasFolder;
@@ -266,7 +268,8 @@ function ProjectCard({ project, state, busy, current, day }) {
       <${Title} href=${linkable ? projectPath(project.name) : undefined} data-route=${linkable || undefined}
         aria-current=${current ? "page" : undefined} onClick=${linkable ? () => (listOpen.value = false) : undefined}
         class="min-w-0 flex-1 truncate text-[15px] font-semibold after:absolute after:inset-0 after:rounded-lg">${project.name}<//>
-      <${CategoryBadge} project=${project} />
+      <${CategoryBadge} project=${project} onClick=${() => openSwitchBoard(project.name)}
+        title="See every project by category, and drag one to another port" />
       ${project.port &&
       (running && !project.self
         ? html`<a href=${`http://localhost:${project.port}`} target="_blank" rel="noopener" title=${`Open localhost:${project.port}`}
@@ -366,7 +369,7 @@ function ListTotals({ known, total, running }) {
   const only = runFilter.value === "running";
   const none = known && !running && !only;
   const off = !known || none;
-  return html`<div class="flex h-[38px] shrink-0 items-center justify-between text-[13px] text-dim">
+  return html`<div class="flex h-[32px] shrink-0 items-center justify-between text-[13px] text-dim">
     <span><span class="font-semibold text-fg">${known ? total : "–"}</span> project${total === 1 ? "" : "s"}</span>
     <label class=${"check-chip" + (only ? " active" : "") + (off ? " disabled" : "")} title=${none ? "No projects running" : "Show only running projects"}>
       <span class="icon-checkbox">
@@ -415,7 +418,12 @@ function ListBody({ rail }) {
       <${Icon} name="search" size=${14} class="pointer-events-none absolute left-3 text-dim" />
       <input type="text" placeholder="Filter by name or description…" aria-label="Filter projects by name or description" value=${query.value}
         onInput=${(e) => (query.value = e.currentTarget.value)}
-        class="h-full w-full rounded-md border border-line bg-bg pl-9 pr-3 text-[13px] outline-none focus:border-accent" />
+        onKeyDown=${(e) => e.key === "Escape" && query.value && (e.stopPropagation(), (query.value = ""))}
+        class="h-full w-full rounded-md border border-line bg-bg pl-9 pr-9 text-[13px] outline-none focus:border-accent" />
+      ${query.value &&
+      html`<button type="button" aria-label="Clear filter" title="Clear"
+        onClick=${(e) => ((query.value = ""), e.currentTarget.parentElement.querySelector("input").focus())}
+        class="absolute right-1.5 flex h-6 w-6 items-center justify-center rounded text-dim hover:bg-line/50 hover:text-fg"><${Icon} name="close" size=${13} /></button>`}
     </label>
     <div class="mt-[11px] flex shrink-0 gap-2">
       <${ShowDropdown} />
@@ -471,9 +479,10 @@ function ListOverlay() {
 }
 
 // Beside project pages (and /projects): the column from 1280px, under it the
-// list over the page. Level with the toolbar's row, its totals; with the top
-// of the project's header, its search box. The column stays in view as the
-// page scrolls; its cards scroll on their own. 320px of cards, as on the old
+// list over the page. Its top is 11px down, like the side column's; its
+// totals' row is shorter than the toolbar's, so nothing under it lines up
+// with the page. The column stays in view as the page scrolls; its cards
+// scroll on their own. 320px of cards, as on the old
 // card grid, 16px from the left menu, like the gaps between the project's
 // panels, and 32px from the project with ScrollRail's line halfway: the
 // page has no padding of its own on this side (see .app-content).

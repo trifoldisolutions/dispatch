@@ -4,6 +4,8 @@ const { SELF_PROJECT } = require("../config/projects");
 const { sessions, loadUser } = require("../middleware/auth");
 const { recentlySeenUserIds, touchUsers, onLogout } = require("./auth");
 const { isPortServing, runsSnapshot } = require("./processes");
+const { listProjectFolders, resolveProjectDir } = require("./registry");
+const { pendingCommitMessageMtime } = require("./git");
 
 // /live: one WebSocket per open Dispatch page, for what changes while it's
 // open. In place of every page polling every few seconds, the server checks
@@ -15,6 +17,7 @@ const { isPortServing, runsSnapshot } = require("./processes");
 //   { type: "registry" }  projects added, moved or removed: reload them
 //   { type: "tasks" | "journal" | "staff", project }  that project's tasks, journal or staff changed
 //   { type: "people" }  an account was added, changed or removed (accounts.js)
+//   { type: "pushes" }  a project's commit message for its next push was written or used
 //   { type: "logged-out" }  this page's login is over: it goes to log in
 //
 // Each page gets ports, runs and presence as soon as it connects. Only logged
@@ -26,16 +29,18 @@ const { isPortServing, runsSnapshot } = require("./processes");
 
 const PORTS_EVERY_MS = 3000; // checking ports costs a connection attempt each, so not every second
 const RUNS_EVERY_MS = 1000; // in-memory, so cheap
+const PUSHES_EVERY_MS = 5000; // a stat per project folder: agents write those files directly, not through the API
 const PRESENCE_EVERY_MS = 30 * 1000; // recently-seen users drop off between connects and disconnects
 const PING_EVERY_MS = 30 * 1000; // closes sockets whose page vanished without saying so
 
-function createLive({ sessions, loadUser, watchedPorts, isPortServing, runsSnapshot, onlineUserIds, touchUsers }) {
+function createLive({ sessions, loadUser, watchedPorts, isPortServing, runsSnapshot, onlineUserIds, touchUsers, pushesStamp }) {
   const wss = new WebSocketServer({ noServer: true });
   const sockets = new Set();
   let ports = null; // last sent: { port: listening }
   let portsJson = "";
   let runsJson = "";
   let presenceJson = "";
+  let pushes = null; // the last pushesStamp(), kept while no one's watching so a change then is still told
   let timers = [];
 
   const send = (ws, message) => {
@@ -67,6 +72,13 @@ function createLive({ sessions, loadUser, watchedPorts, isPortServing, runsSnaps
       runsJson = json;
       broadcast({ type: "runs", runs });
     }
+  }
+
+  // Only says something changed: each page then asks for its own user's.
+  function checkPushes() {
+    const stamp = pushesStamp();
+    if (pushes !== null && stamp !== pushes) broadcast({ type: "pushes" });
+    pushes = stamp;
   }
 
   function connectedUserIds() {
@@ -138,6 +150,7 @@ function createLive({ sessions, loadUser, watchedPorts, isPortServing, runsSnaps
     timers = [
       every(checkPorts, PORTS_EVERY_MS),
       every(async () => checkRuns(), RUNS_EVERY_MS),
+      every(async () => checkPushes(), PUSHES_EVERY_MS),
       every(async () => {
         await checkLogins();
         await checkPresence();
@@ -253,6 +266,10 @@ function createLive({ sessions, loadUser, watchedPorts, isPortServing, runsSnaps
     runsChanged() {
       checkRuns();
     },
+    // A push used a project's commit message (routes/api.js).
+    pushesChanged() {
+      checkPushes();
+    },
   };
 }
 
@@ -268,6 +285,12 @@ const live = createLive({
   runsSnapshot,
   onlineUserIds: recentlySeenUserIds,
   touchUsers,
+  // When each project's pending commit message was last written, if it has one.
+  pushesStamp() {
+    return listProjectFolders()
+      .map((name) => `${name}:${pendingCommitMessageMtime(resolveProjectDir(name)) || ""}`)
+      .join("|");
+  },
 });
 onLogout((login) => live.loggedOut(login));
 

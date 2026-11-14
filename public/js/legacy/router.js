@@ -167,6 +167,7 @@ function resetPageState() {
   createDrawerOpen = false;
   taskFilter = emptyTaskFilter();
   taskStatusFilter = defaultTaskStatusFilter();
+  taskSectionsCollapsed = defaultTaskSectionsCollapsed();
   journalFilter = emptyJournalFilter();
   explorerQuery = "";
   explorerSearchCollapsed = new Set();
@@ -174,7 +175,8 @@ function resetPageState() {
   closeJournalCalendar();
   closeTaskCalendar();
   taskDueCalendarOpen = false;
-  portSwitchOpen = false;
+  taskPriorityMenuOpen = false;
+  taskPriorityFilterOpen = false;
   openTagsDropdownFor = null;
   openStaffMenu = null;
   openAssignDropdown = null;

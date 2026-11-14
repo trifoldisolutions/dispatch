@@ -16,6 +16,14 @@ const TASK_TITLE_MAX_LENGTH = 80; // mirrors the composer's title input maxlengt
 const TASK_DESCRIPTION_MAX_LENGTH = 500; // mirrors the composer's description textarea maxlength
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/; // matches <input type="date">'s value format
 const TAG_MAX_LENGTH = 30;
+// Lowest to highest. The Tasks composer won't add a task without one, but the
+// API leaves it optional (agents add tasks with just a title), and tasks from
+// before priorities existed have none.
+const TASK_PRIORITIES = ["low", "medium", "high", "urgent"];
+// At most this many tasks can be open (not done or archived) and urgent at
+// once. Making another one urgent, or reopening one that is, waits until one
+// of them is done or lowered.
+const URGENT_TASK_LIMIT = 2;
 
 function findTasksPath(projectDir) {
   return path.join(projectDir, TASKS_RELATIVE);
@@ -65,6 +73,37 @@ function parseTaskText(body, { requireTitle }) {
     result.description = description;
   }
   return result;
+}
+
+// Validates a request body's `priority`: absent leaves it out of the result
+// (PATCH only sends what changed), null or "" clears it, otherwise it has to
+// be one of TASK_PRIORITIES. Returns { error } or { priority? }.
+function parseTaskPriority(body) {
+  if (typeof body.priority === "undefined") return {};
+  if (body.priority === null || body.priority === "") return { priority: null };
+  if (!TASK_PRIORITIES.includes(body.priority)) return { error: `task priority must be one of ${TASK_PRIORITIES.join(", ")}` };
+  return { priority: body.priority };
+}
+
+function isOpenUrgent(task) {
+  return task.priority === "urgent" && !task.done && !task.archived;
+}
+
+// Checks a new or changed `task` against URGENT_TASK_LIMIT, with `before` as
+// the changed task was saved. Returns null when it may be saved, or the 409
+// body refusing it: the error, plus the urgent tasks in the way so the Tasks
+// panel can offer to settle one. Only becoming open and urgent is refused, so
+// a project already over the limit can still edit its urgent tasks.
+function urgentLimitRefusal(tasks, task, before = null) {
+  if (!isOpenUrgent(task) || (before && isOpenUrgent(before))) return null;
+  const inTheWay = tasks.filter((t) => t.id !== task.id && isOpenUrgent(t));
+  if (inTheWay.length < URGENT_TASK_LIMIT) return null;
+  return {
+    error:
+      `this project already has ${inTheWay.length} urgent tasks (${inTheWay.map((t) => t.id).join(", ")}): ` +
+      "the user has to mark one done or lower its priority before another task can be urgent",
+    urgentTasks: inTheWay.map(({ id, title }) => ({ id, title })),
+  };
 }
 
 function writeTasks(tasksPath, data) {
@@ -149,6 +188,8 @@ module.exports = {
   findTasksPath,
   readTasks,
   parseTaskText,
+  parseTaskPriority,
+  urgentLimitRefusal,
   writeTasks,
   normalizeTagList,
   mergeKnownTags,
